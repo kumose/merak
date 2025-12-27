@@ -1,0 +1,43 @@
+// Copyright (C) 2024 Kumo inc.
+// Author: Jeff.li lijippy@163.com
+// All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+// Copyright (C) 2015 THL A29 Limited, a Tencent company, and Milo Yip.
+// JSON pretty formatting example
+// This example can only handle UTF-8. For handling other encodings, see prettyauto example.
+
+#include <merak/json.h>
+
+using namespace merak::json;
+
+int main(int, char*[]) {
+    // Prepare reader and input stream.
+    Reader reader;
+    char readBuffer[65536];
+    FileReadStream is(stdin, readBuffer, sizeof(readBuffer));
+
+    // Prepare writer and output stream.
+    char writeBuffer[65536];
+    FileWriteStream os(stdout, writeBuffer, sizeof(writeBuffer));
+    PrettyWriter<FileWriteStream> writer(os);
+
+    // JSON reader parse from the input stream and let writer generate the output.
+    if (!reader.parse<kParseValidateEncodingFlag>(is, writer)) {
+        fprintf(stderr, "\nError(%u): %s\n", static_cast<unsigned>(reader.get_error_offset()), get_parse_error_en(reader.GetParseErrorCode()));
+        return 1;
+    }
+
+    return 0;
+}

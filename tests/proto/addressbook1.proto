@@ -1,0 +1,56 @@
+// Copyright (C) 2024 Kumo inc.
+// Author: Jeff.li lijippy@163.com
+// All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+
+syntax="proto2";
+message Ext {
+  optional fixed32 age = 2;
+  required bytes databyte = 3;
+  enum PhoneType {
+    MOBILE = 0;
+    HOME = 1;
+    WORK = 2;
+  }
+
+  optional PhoneType enumtype = 4 [default = HOME];
+} 
+
+message Content {
+  optional string uid = 1;
+  required float distance = 16;
+  optional Ext ext = 17;
+}
+
+message JsonContextBody {
+  optional int64 type = 1;
+  repeated int32 data = 5;
+  repeated string info = 6;
+  required bool  judge = 2;
+  required double spur = 3;
+  repeated Content content = 4;
+  optional float text = 7;
+}
+
+
+message PersonInfo {
+  optional string name = 1;
+  optional int32 id = 2;        // Unique ID number for this person.
+  optional JsonContextBody json_body = 18;
+}
+
+message AddressBook {
+  repeated PersonInfo person = 1;
+}

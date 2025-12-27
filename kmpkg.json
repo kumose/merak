@@ -1,0 +1,14 @@
+{
+  "dependencies": [
+    "gperftools",
+    "gtest",
+    "turbo",
+    "libunwind",
+    {
+      "name": "protobuf",
+      "features": [
+        "zlib"
+      ]
+    }
+  ]
+}

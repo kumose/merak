@@ -1,0 +1,88 @@
+# Copyright (C) Kumo inc. and its affiliates.
+# Author: Jeff.li lijippy@163.com
+# All rights reserved.
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published
+# by the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+@PACKAGE_INIT@
+
+include ("${CMAKE_CURRENT_LIST_DIR}/@PROJECT_NAME@Targets.cmake")
+
+set(@PROJECT_NAME@_VERSION_MAJOR @PROJECT_VERSION_MAJOR@)
+set(@PROJECT_NAME@_VERSION_MINOR @PROJECT_VERSION_MINOR@)
+set(@PROJECT_NAME@_VERSION_PATCH @PROJECT_VERSION_PATCH@)
+set(@PROJECT_NAME@_VERSION @PROJECT_VERSION@)
+set(@PROJECT_NAME@_INCLUDE_DIR ${PACKAGE_PREFIX_DIR}/include)
+
+
+#include_directories(${PACKAGE_PREFIX_DIR}/include)
+
+find_package(Threads REQUIRED)
+find_package(turbo REQUIRED)
+find_package(${turbo_INCLUDE_DIR})
+find_package(Protobuf REQUIRED)
+get_target_property(PROTOBUF_INCLUDE_DIR protobuf::libprotobuf INTERFACE_INCLUDE_DIRECTORIES)
+include_directories(${PROTOBUF_INCLUDE_DIR})
+
+if (Protobuf_VERSION GREATER 4.21)
+    # required by absl
+    find_package(absl REQUIRED CONFIG)
+    set(protobuf_ABSL_USED_TARGETS
+            absl::absl_check
+            absl::absl_log
+            absl::algorithm
+            absl::base
+            absl::bind_front
+            absl::bits
+            absl::btree
+            absl::cleanup
+            absl::cord
+            absl::core_headers
+            absl::debugging
+            absl::die_if_null
+            absl::dynamic_annotations
+            absl::flags
+            absl::flat_hash_map
+            absl::flat_hash_set
+            absl::function_ref
+            absl::hash
+            absl::layout
+            absl::log_initialize
+            absl::log_severity
+            absl::memory
+            absl::node_hash_map
+            absl::node_hash_set
+            absl::optional
+            absl::span
+            absl::status
+            absl::statusor
+            absl::strings
+            absl::synchronization
+            absl::time
+            absl::type_traits
+            absl::utility
+            absl::variant
+            )
+endif ()
+
+set(merak_LIBRARIES
+        turbo::turbo_static
+        protobuf::libprotobuf
+        ${protobuf_ABSL_USED_TARGETS}
+        protobuf::libprotoc
+        merak::merak_static
+        )
+        
+set(@PROJECT_NAME@_ARCH_FLAGS @KMCMAKE_ARCH_OPTION@)
+
+check_required_components("@PROJECT_NAME@")

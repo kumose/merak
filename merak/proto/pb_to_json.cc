@@ -1,0 +1,486 @@
+// Copyright (C) 2024 Kumo inc.
+// Author: Jeff.li lijippy@163.com
+// All rights reserved.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+
+#include <iostream>
+#include <vector>
+#include <string>
+#include <sstream>
+#include <sys/time.h>
+#include <time.h>
+#include <google/protobuf/descriptor.h>
+#include <google/protobuf/any.pb.h>
+#include <merak/utility/zero_copy_stream_writer.h>
+#include <merak/proto/encode_decode.h>
+#include <merak/proto/descriptor.h>
+#include <merak/json/std_output_stream.h>
+#include <turbo/strings/string_builder.h>
+#include <merak/json.h>
+#include <merak/proto/pb_to_json.h>
+#include <turbo/strings/escaping.h>
+
+namespace merak {
+
+    class PbToJsonConverter {
+    public:
+        explicit PbToJsonConverter(const Pb2JsonOptions &opt) : _option(opt) {}
+
+        template<typename Handler>
+        bool Convert(const google::protobuf::Message &message, Handler &handler, bool root_msg = false);
+
+        [[nodiscard]] const std::string &ErrorText() const { return _error; }
+
+    private:
+        template<typename Handler>
+        bool pb_field_to_json(const google::protobuf::Message &message,
+                              const google::protobuf::FieldDescriptor *field,
+                              Handler &handler);
+        template<typename Handler>
+        bool pb_field_to_any_single(const google::protobuf::Message &message,
+                              const google::protobuf::FieldDescriptor *field,
+                              Handler &handler);
+
+        template<typename Handler>
+        bool pb_field_to_any(const google::protobuf::Message &message,
+                                    const google::protobuf::FieldDescriptor *field,
+                                    Handler &handler);
+
+
+        std::string _error;
+        Pb2JsonOptions _option;
+    };
+
+    template<typename Handler>
+    bool PbToJsonConverter::Convert(const google::protobuf::Message &message, Handler &handler, bool root_msg) {
+        const google::protobuf::Reflection *reflection = message.GetReflection();
+        const google::protobuf::Descriptor *descriptor = message.GetDescriptor();
+
+        int ext_range_count = descriptor->extension_range_count();
+        int field_count = descriptor->field_count();
+        std::vector<const google::protobuf::FieldDescriptor *> fields;
+        fields.reserve(64);
+        for (int i = 0; i < ext_range_count; ++i) {
+            const google::protobuf::Descriptor::ExtensionRange *
+                    ext_range = descriptor->extension_range(i);
+#if GOOGLE_PROTOBUF_VERSION < 4025000
+            for (int tag_number = ext_range->start; tag_number < ext_range->end; ++tag_number)
+#else
+            for (int tag_number = ext_range->start_number(); tag_number < ext_range->end_number(); ++tag_number)
+#endif
+            {
+                const google::protobuf::FieldDescriptor *field =
+                        reflection->FindKnownExtensionByNumber(tag_number);
+                if (field) {
+                    fields.push_back(field);
+                }
+            }
+        }
+        std::vector<const google::protobuf::FieldDescriptor *> map_fields;
+        for (int i = 0; i < field_count; ++i) {
+            const google::protobuf::FieldDescriptor *field = descriptor->field(i);
+            if (_option.enable_protobuf_map && merak::is_protobuf_map(field)) {
+                map_fields.push_back(field);
+            } else {
+                fields.push_back(field);
+            }
+        }
+
+        if (root_msg && _option.single_repeated_to_array) {
+            if (map_fields.empty() && fields.size() == 1 && fields.front()->is_repeated()) {
+                return pb_field_to_json(message, fields.front(), handler);
+            }
+        }
+
+        handler.start_object();
+
+        // Fill in non-map fields
+        std::string field_name_str;
+        for (size_t i = 0; i < fields.size(); ++i) {
+            const google::protobuf::FieldDescriptor *field = fields[i];
+            if (!field->is_repeated() && !reflection->HasField(message, field)) {
+                // Field that has not been set
+                if (field->is_required()) {
+                    _error = "Missing required field: " + field->full_name();
+                    return false;
+                }
+                // Whether dumps default fields
+                if (!_option.always_print_primitive_fields) {
+                    continue;
+                }
+            } else if (field->is_repeated()
+                       && reflection->FieldSize(message, field) == 0
+                       && !_option.jsonify_empty_array) {
+                // Repeated field that has no entry
+                continue;
+            }
+
+            const std::string &orig_name = field->name();
+            bool decoded = decode_name(orig_name, field_name_str);
+            const std::string &name = decoded ? field_name_str : orig_name;
+            handler.emplace_key(name.data(), name.size(), false);
+            if (!pb_field_to_json(message, field, handler)) {
+                return false;
+            }
+        }
+
+        // Fill in map fields
+        for (size_t i = 0; i < map_fields.size(); ++i) {
+            const google::protobuf::FieldDescriptor *map_desc = map_fields[i];
+            const google::protobuf::FieldDescriptor *key_desc =
+                    map_desc->message_type()->field(merak::KEY_INDEX);
+            const google::protobuf::FieldDescriptor *value_desc =
+                    map_desc->message_type()->field(merak::VALUE_INDEX);
+
+            // Write a json object corresponding to hold protobuf map
+            // such as {"key": value, ...}
+            const std::string &orig_name = map_desc->name();
+            bool decoded = decode_name(orig_name, field_name_str);
+            const std::string &name = decoded ? field_name_str : orig_name;
+            handler.emplace_key(name.data(), name.size(), false);
+            handler.start_object();
+            std::string entry_name;
+            for (int j = 0; j < reflection->FieldSize(message, map_desc); ++j) {
+                const google::protobuf::Message &entry =
+                        reflection->GetRepeatedMessage(message, map_desc, j);
+                const google::protobuf::Reflection *entry_reflection = entry.GetReflection();
+                entry_name = entry_reflection->GetStringReference(
+                        entry, key_desc, &entry_name);
+                handler.emplace_key(entry_name.data(), entry_name.size(), false);
+
+                // Fill in entries into this json object
+                if (!pb_field_to_json(entry, value_desc, handler)) {
+                    return false;
+                }
+            }
+            // Hack: Pass 0 as parameter since Writer doesn't care this
+            handler.end_object(0);
+        }
+        // Hack: Pass 0 as parameter since Writer doesn't care this
+        handler.end_object(0);
+        return true;
+    }
+
+    template<typename Handler>
+    bool PbToJsonConverter::pb_field_to_any(const google::protobuf::Message &message,
+                                                   const google::protobuf::FieldDescriptor *field,
+                                                   Handler &handler) {
+        const google::protobuf::Reflection *reflection = message.GetReflection();
+        if (field->is_repeated()) {
+            int field_size = reflection->FieldSize(message, field);
+            handler.start_array();
+            for (int index = 0; index < field_size; ++index) {
+                if (!pb_field_to_any_single(reflection->GetRepeatedMessage(
+                        message, field, index), field, handler)) {
+                    return false;
+                }
+            }
+            handler.end_array(field_size);
+
+        } else {
+            if (!pb_field_to_any_single(reflection->GetMessage(message, field), field, handler)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    template<typename Handler>
+    bool PbToJsonConverter::pb_field_to_any_single(const google::protobuf::Message &message,
+                         const google::protobuf::FieldDescriptor *field,
+                         Handler &handler) {
+        const google::protobuf::Reflection *reflection = message.GetReflection();
+        std::string key_value;
+        handler.start_object();
+        /// key
+        auto key_des = field->message_type()->field(0);
+        key_value = reflection->GetStringReference(message, key_des, &key_value);
+        std::string_view key_view = key_value;
+        if(turbo::starts_with(key_view, TYPE_PREFIX)) {
+            key_view = key_view.substr(TYPE_PREFIX.size());
+        }
+        if(_option.using_a_type_url) {
+            handler.emplace_key(A_TYPE_URL.data(), A_TYPE_URL.size(), false);
+        } else {
+            handler.emplace_key(TYPE_URL.data(), TYPE_URL.size(), false);
+        }
+        handler.emplace_string(key_value.data(), key_value.size(), false);
+        auto value_des = field->message_type()->field(1);
+        handler.emplace_key(VALUE_NAME.data(),VALUE_NAME.size(), false);
+        std::string value;
+        value = reflection->GetStringReference(message, value_des, &value);
+        std::unique_ptr<google::protobuf::Message> ptr(create_message_by_type_name(key_view));
+        if(!ptr) {
+            std::cout<<"ptr == null "<<key_view<<std::endl;
+            return false;
+        }
+        if(!ptr->ParseFromString(value)) {
+            std::cout<<"ParseFromString"<<std::endl;
+            return false;
+        }
+        if (!Convert(*ptr, handler, true)) {
+            std::cout<<"Convert"<<std::endl;
+            return false;
+        }
+        handler.end_object(1);
+        return true;
+    }
+
+    template<typename Handler>
+    bool PbToJsonConverter::pb_field_to_json(const google::protobuf::Message &message,
+                                             const google::protobuf::FieldDescriptor *field, Handler &handler) {
+        if(is_protobuf_any(field)) {
+            return pb_field_to_any(message,field,handler);
+        }
+        const google::protobuf::Reflection *reflection = message.GetReflection();
+        switch (field->cpp_type()) {
+            case google::protobuf::FieldDescriptor::CPPTYPE_BOOL: {
+                if (field->is_repeated()) {
+                    int field_size = reflection->FieldSize(message, field);
+                    handler.start_array();
+                    for (int index = 0; index < field_size; ++index) {
+                        handler.emplace_bool(static_cast<bool>(reflection->GetRepeatedBool(message, field, index)));
+                    }
+                    handler.end_array(field_size);
+                }
+                else { handler.emplace_bool(static_cast<bool>(reflection->GetBool(message, field))); }
+                break;
+            }
+            case google::protobuf::FieldDescriptor::CPPTYPE_INT32: {
+                if (field->is_repeated()) {
+                    int field_size = reflection->FieldSize(message, field);
+                    handler.start_array();
+                    for (int index = 0; index < field_size; ++index) {
+                        handler.emplace_int32(static_cast<int>(reflection->GetRepeatedInt32(message, field, index)));
+                    }
+                    handler.end_array(field_size);
+                }
+                else { handler.emplace_int32(static_cast<int>(reflection->GetInt32(message, field))); }
+                break;
+            }
+
+            case google::protobuf::FieldDescriptor::CPPTYPE_UINT32: {
+                if (field->is_repeated()) {
+                    int field_size = reflection->FieldSize(message, field);
+                    handler.start_array();
+                    for (int index = 0; index < field_size; ++index) {
+                        handler.emplace_uint32(static_cast<unsigned int>(reflection->GetRepeatedUInt32(message, field, index)));
+                    }
+                    handler.end_array(field_size);
+                }
+                else { handler.emplace_uint32(static_cast<unsigned int>(reflection->GetUInt32(message, field))); }
+                break;
+            }
+            case google::protobuf::FieldDescriptor::CPPTYPE_INT64: {
+                if (field->is_repeated()) {
+                    int field_size = reflection->FieldSize(message, field);
+                    handler.start_array();
+                    for (int index = 0; index < field_size; ++index) {
+                        handler.emplace_int64(static_cast<int64_t>(reflection->GetRepeatedInt64(message, field, index)));
+                    }
+                    handler.end_array(field_size);
+                }
+                else { handler.emplace_int64(static_cast<int64_t>(reflection->GetInt64(message, field))); }
+                break;
+            }
+            case google::protobuf::FieldDescriptor::CPPTYPE_UINT64: {
+                if (field->is_repeated()) {
+                    int field_size = reflection->FieldSize(message, field);
+                    handler.start_array();
+                    for (int index = 0; index < field_size; ++index) {
+                        handler.emplace_uint64(static_cast<uint64_t>(reflection->GetRepeatedUInt64(message, field, index)));
+                    }
+                    handler.end_array(field_size);
+                }
+                else { handler.emplace_uint64(static_cast<uint64_t>(reflection->GetUInt64(message, field))); }
+                break;
+            }
+            case google::protobuf::FieldDescriptor::CPPTYPE_FLOAT: {
+                if (field->is_repeated()) {
+                    int field_size = reflection->FieldSize(message, field);
+                    handler.start_array();
+                    for (int index = 0; index < field_size; ++index) {
+                        handler.emplace_double(static_cast<double>(reflection->GetRepeatedFloat(message, field, index)));
+                    }
+                    handler.end_array(field_size);
+                }
+                else { handler.emplace_double(static_cast<double>(reflection->GetFloat(message, field))); }
+                break;
+            }
+            case google::protobuf::FieldDescriptor::CPPTYPE_DOUBLE: {
+                if (field->is_repeated()) {
+                    int field_size = reflection->FieldSize(message, field);
+                    handler.start_array();
+                    for (int index = 0; index < field_size; ++index) {
+                        handler.emplace_double(static_cast<double>(reflection->GetRepeatedDouble(message, field, index)));
+                    }
+                    handler.end_array(field_size);
+                }
+                else { handler.emplace_double(static_cast<double>(reflection->GetDouble(message, field))); }
+                break;
+            }
+
+            case google::protobuf::FieldDescriptor::CPPTYPE_STRING: {
+                std::string value;
+                if (field->is_repeated()) {
+                    int field_size = reflection->FieldSize(message, field);
+                    handler.start_array();
+                    for (int index = 0; index < field_size; ++index) {
+                        value = reflection->GetRepeatedStringReference(
+                                message, field, index, &value);
+                        if (field->type() == google::protobuf::FieldDescriptor::TYPE_BYTES
+                            && _option.bytes_to_base64) {
+                            std::string value_decoded;
+                            turbo::base64_encode(value, &value_decoded);
+                            handler.emplace_string(value_decoded.data(), value_decoded.size(), false);
+                        } else {
+                            handler.emplace_string(value.data(), value.size(), false);
+                        }
+                    }
+                    handler.end_array(field_size);
+
+                } else {
+                    value = reflection->GetStringReference(message, field, &value);
+                    if (field->type() == google::protobuf::FieldDescriptor::TYPE_BYTES
+                        && _option.bytes_to_base64) {
+                        std::string value_decoded;
+                        turbo::base64_encode(value, &value_decoded);
+                        handler.emplace_string(value_decoded.data(), value_decoded.size(), false);
+                    } else {
+                        handler.emplace_string(value.data(), value.size(), false);
+                    }
+                }
+                break;
+            }
+
+            case google::protobuf::FieldDescriptor::CPPTYPE_ENUM: {
+                if (field->is_repeated()) {
+                    int field_size = reflection->FieldSize(message, field);
+                    handler.start_array();
+                    if (_option.enum_option == OUTPUT_ENUM_BY_NAME) {
+                        for (int index = 0; index < field_size; ++index) {
+                            const std::string &enum_name = reflection->GetRepeatedEnum(
+                                    message, field, index)->name();
+                            handler.emplace_string(enum_name.data(), enum_name.size(), false);
+                        }
+                    } else {
+                        for (int index = 0; index < field_size; ++index) {
+                            handler.emplace_int32(reflection->GetRepeatedEnum(
+                                    message, field, index)->number());
+                        }
+                    }
+                    handler.end_array(field_size);
+
+                } else {
+                    if (_option.enum_option == OUTPUT_ENUM_BY_NAME) {
+                        const std::string &enum_name =
+                                reflection->GetEnum(message, field)->name();
+                        handler.emplace_string(enum_name.data(), enum_name.size(), false);
+                    } else {
+                        handler.emplace_int32(reflection->GetEnum(message, field)->number());
+                    }
+                }
+                break;
+            }
+
+            case google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE: {
+                if (field->is_repeated()) {
+                    int field_size = reflection->FieldSize(message, field);
+                    handler.start_array();
+                    for (int index = 0; index < field_size; ++index) {
+                        if (!Convert(reflection->GetRepeatedMessage(
+                                message, field, index), handler)) {
+                            return false;
+                        }
+                    }
+                    handler.end_array(field_size);
+
+                } else {
+                    if (!Convert(reflection->GetMessage(message, field), handler)) {
+                        return false;
+                    }
+                }
+                break;
+            }
+        }
+        return true;
+    }
+
+    template<typename OutputStream>
+    turbo::Status proto_message_to_json_stream(const google::protobuf::Message &message,
+                                      const Pb2JsonOptions &options,
+                                      OutputStream &os) {
+        PbToJsonConverter converter(options);
+        bool succ;
+        if (options.pretty_json) {
+            merak::json::PrettyWriter<OutputStream> writer(os);
+            succ = converter.Convert(message, writer, true);
+        } else {
+            merak::json::Writer<OutputStream> writer(os);
+            succ = converter.Convert(message, writer, true);
+        }
+        if (!succ) {
+            return turbo::invalid_argument_error(converter.ErrorText());
+        }
+        return turbo::OkStatus();
+    }
+
+    turbo::Status proto_message_to_json(const google::protobuf::Message &message,
+                               std::string *json,
+                               const Pb2JsonOptions &options) {
+        //turbo::strings_internal::OStringStream os(json);
+        //merak::json::StdOutputStream buffer(os);
+        //return merak::proto_message_to_json_stream(message, options, buffer, error);
+        merak::json::StringBuffer buffer;
+        TURBO_RETURN_NOT_OK(merak::proto_message_to_json_stream(message, options, buffer));
+        json->append(buffer.get_string(), buffer.GetSize());
+        return turbo::OkStatus();
+    }
+
+    turbo::Status proto_message_to_json(const google::protobuf::Message &message,
+                               std::string *json) {
+        return proto_message_to_json(message, json, Pb2JsonOptions());
+    }
+
+    turbo::Status proto_message_to_json(const google::protobuf::Message &message,
+                               google::protobuf::io::ZeroCopyOutputStream *stream,
+                               const Pb2JsonOptions &options) {
+        merak::ZeroCopyStreamWriter wrapper(stream);
+        return merak::proto_message_to_json_stream(message, options, wrapper);
+    }
+
+    turbo::Status proto_message_to_json(const google::protobuf::Message &message,
+                               google::protobuf::io::ZeroCopyOutputStream *stream) {
+        return proto_message_to_json(message, stream, Pb2JsonOptions());
+    }
+
+    turbo::Status proto_message_to_json(const google::protobuf::Message& message,
+                                        merak::json::Document &json) {
+        return proto_message_to_json(message,json, Pb2JsonOptions());
+
+
+    }
+
+    turbo::Status proto_message_to_json(const google::protobuf::Message& message,
+                                        merak::json::Document &json, const Pb2JsonOptions& options) {
+        PbToJsonConverter converter(options);
+        bool succ = converter.Convert(message, json, true);
+        if (!succ) {
+            return turbo::invalid_argument_error(converter.ErrorText());
+        }
+
+        return turbo::OkStatus();
+    }
+} // namespace merak
