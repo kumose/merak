@@ -70,3 +70,7 @@ Run in the project root directory:
 ```shell
 ctest --test-dir build
 ```
+
+# LICENCE
+
+this parts code from [rapidjson](https://github.com/Tencent/rapidjson) licensed by [MIT](rapidjosn.license).
