@@ -82,6 +82,11 @@ namespace merak {
         printer.PrintToString(*person, &text);
 
         printf("----------test pb to json------------\n\n");
+
+        std::string njson;
+        merak::proto_message_to_json(address_book, &njson);
+        std::cout << njson << std::endl;
+
         merak::proto_message_to_flat_json(address_book, &info1);
         std::cout << info1 << std::endl;
 
