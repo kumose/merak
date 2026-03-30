@@ -16,3 +16,4 @@
 
 #include <merak/proto/pb_to_json.h>
 #include <merak/proto/json_to_pb.h>
+#include <merak/proto/pb_to_flat.h>
