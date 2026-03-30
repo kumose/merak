@@ -158,58 +158,24 @@ AddressBook address_book;
 }
 ```
 
-```json
-person.[
-  0
-].datau32=60
-person.[
-  0
-].datafix64=666
-person.[
-  0
-].data32=6
-person.[
-  0
-].datafix32=1
-person.[
-  0
-].datafloat=8.6123
-person.[
-  0
-].databyte=d2VsY29tZSB0byBjaGluYQ==
-person.[
-  0
-].databool=false
-person.[
-  0
-].data64=-1820000000
-person.[
-  0
-].data=-240000000
-person.[
-  0
-].datasfix32=120
-person.[
-  0
-].datadouble_scientific=1.23457e+08
-person.[
-0
-].datau64=960
-person.[
-0
-].datadouble=123.456
-person.[
-0
-].datasfix64=-802
-person.[
-0
-].id=100
-person.[
-0
-].name=myname
-person.[
-0
-].datafloat_scientific=1.23457e+08
+```text
+map:person.[0].databyte=d2VsY29tZSB0byBjaGluYQ==
+person.[0].datafix64=666
+person.[0].datau32=60
+person.[0].name=myname
+person.[0].datau64=960
+person.[0].datasfix64=-802
+person.[0].datadouble=123.456
+person.[0].datasfix32=120
+person.[0].data32=6
+person.[0].datafloat_scientific=1.23457e+08
+person.[0].data64=-1820000000
+person.[0].databool=false
+person.[0].datadouble_scientific=1.23457e+08
+person.[0].datafloat=8.6123
+person.[0].datafix32=1
+person.[0].data=-240000000
+person.[0].id=100
 ```
 
 ## 🛠️ Build
