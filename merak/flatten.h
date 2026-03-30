@@ -15,3 +15,6 @@
 #pragma once
 
 #include <merak/flatten/pb_to_flat.h>
+
+#include <merak/flatten/json_to_flat.h>
+

@@ -35,6 +35,8 @@
 #include <tests/proto/addressbook_encode_decode.pb.h>
 #include <tests/proto/addressbook_map.pb.h>
 #include <tests/data/paths.h>
+#include <merak/flatten.h>
+#include "merak/proto/pb_to_json.h"
 
 namespace merak {
 
@@ -91,6 +93,19 @@ namespace merak {
         turbo::flat_hash_map<std::string, std::string>  fmap;
         merak::proto_message_to_flat(address_book, fmap);
         std::cout << fmap << std::endl;
+
+        turbo::flat_hash_map<std::string, std::string>  jmap;
+        std::string jinfo;
+        merak::proto_message_to_json(address_book, &jinfo);
+        auto rs = merak::json_to_flat_map(jinfo, jmap);
+        std::cout << rs<< std::endl;
+        std::cout << jinfo << std::endl;
+        std::cout << "jmap:" << std::endl;
+        std::cout << jmap << std::endl;
+        std::string f_json;
+         merak::json_to_flat_json(jinfo, &f_json);
+        std::cout << "f_json:" << std::endl;
+        std::cout << f_json << std::endl;
 
         //ASSERT_TRUE(ret.ok());
         /*

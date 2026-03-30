@@ -19,28 +19,10 @@
 #include <turbo/utility/status.h>
 #include <google/protobuf/message.h>
 #include <google/protobuf/io/zero_copy_stream.h>    // ZeroCopyInputStream
+#include <merak/options.h>
 
 namespace merak {
 
-    struct Json2PbOptions {
-        // Decode string in json using base64 decoding if the type of
-        // corresponding field is bytes when this option is turned on.
-        // Default: false for baidu-interal, true otherwise.
-        bool base64_to_bytes{true};
-
-        // Allow decoding json array iff there is only one repeated field.
-        // Default: false.
-        bool array_to_single_repeated{false};
-
-        // Allow more bytes remaining in the input after parsing the first json
-        // object. Useful when the input contains more than one json object.
-        bool allow_remaining_bytes_after_parsing{false};
-
-        // Allow compatible field name in json string.
-        // eg define in proto optional string person_name,
-        // it is compatible `personName` in json file name
-        bool compatible_json_field{false};
-    };
 
     // Convert `json' to protobuf `message'.
     // Returns true on success. `error' (if not nullptr) will be set with error
