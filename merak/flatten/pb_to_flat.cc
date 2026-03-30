@@ -13,7 +13,7 @@
 // limitations under the License.
 //
 
-#include <merak/proto/pb_to_flat.h>
+#include <merak/flatten/pb_to_flat.h>
 
 #include <iostream>
 #include <vector>

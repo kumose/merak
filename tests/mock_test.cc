@@ -24,7 +24,7 @@
 #include <merak/json.h>
 #include <turbo/times/time.h>
 #include <gperftools/profiler.h>
-#include <merak/proto/pb_to_flat.h>
+#include <merak/flatten.h>
 #include <merak/proto/json_to_pb.h>
 #include <merak/proto/encode_decode.h>
 #include <merak/utility/zero_copy_stream_reader.h>
