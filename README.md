@@ -13,30 +13,225 @@ merak
 
 [中文版](./README_CN.md)
 
-
 merak Project Description. more info see [documents](https://pub.kumose.cc/cppdev/docs/foundamentals/json/)
 
+* json to protobuf
+* protobuf to json
+* json to flat kv
+* protobuf to flat kv
 
+```protobuf
+syntax="proto2";
+
+package addressbook;
+message Person {
+    required string name = 1;
+    required int32 id = 2;        // Unique ID number for this person.
+    optional string email = 3;
+
+    enum PhoneType {
+        MOBILE = 0;
+        HOME = 1;
+        WORK = 2;
+    }
+
+    message PhoneNumber {
+        required string number = 1;
+        optional PhoneType type = 2 [default = HOME];
+    }
+
+    repeated PhoneNumber phone = 4;
+
+    optional int64 data = 5;
+  
+    optional sint32 data32 = 6;
+  
+    optional sint64 data64 = 7;
+
+    required double datadouble = 8;
+
+    optional float  datafloat = 9; 
+  
+    optional uint32 datau32 = 10;
+  
+    optional uint64 datau64 = 11;
+
+    optional bool   databool = 12;
+
+    optional bytes databyte = 13;
+  
+    optional fixed32 datafix32 = 14;
+  
+    optional fixed64 datafix64 = 15;
+  
+    optional sfixed32 datasfix32 = 16;
+  
+    optional sfixed64 datasfix64 = 17;
+
+    optional float datafloat_scientific = 18;
+    
+    optional double datadouble_scientific = 19;
+
+    extensions 100 to 200;
+}
+
+extend Person {
+    optional string hobby = 100;
+}
+
+message AddressBook {
+    repeated Person person = 1;
+}
+
+```
+
+```c++
+AddressBook address_book;
+
+      Person *person = address_book.add_person();
+
+      person->set_id(100);
+
+      person->set_name("myname");
+      person->set_data(-240000000);
+      person->set_data32(6);
+      person->set_data64(-1820000000);
+      person->set_datadouble(123.456);
+      person->set_datadouble_scientific(1.23456789e+08);
+      person->set_datafloat_scientific(1.23456789e+08);
+      person->set_datafloat(8.6123);
+      person->set_datau32(60);
+      person->set_datau64(960);
+      person->set_databool(0);
+      person->set_databyte("welcome to china");
+      person->set_datafix32(1);
+      person->set_datafix64(666);
+      person->set_datasfix32(120);
+      person->set_datasfix64(-802);
+```
+```json
+{
+  "person": [
+    {
+      "name": "myname",
+      "id": 100,
+      "data": -240000000,
+      "data32": 6,
+      "data64": -1820000000,
+      "datadouble": 123.456,
+      "datafloat": 8.612299919128418,
+      "datau32": 60,
+      "datau64": 960,
+      "databool": false,
+      "databyte": "d2VsY29tZSB0byBjaGluYQ==",
+      "datafix32": 1,
+      "datafix64": 666,
+      "datasfix32": 120,
+      "datasfix64": -802,
+      "datafloat_scientific": 123456792.0,
+      "datadouble_scientific": 123456789.0
+    }
+  ]
+}
+
+```
+
+```json
+{
+  "person.[0].name": "myname",
+  "person.[0].id": 100,
+  "person.[0].data": -240000000,
+  "person.[0].data32": 6,
+  "person.[0].data64": -1820000000,
+  "person.[0].datadouble": 123.456,
+  "person.[0].datafloat": 8.612299919128418,
+  "person.[0].datau32": 60,
+  "person.[0].datau64": 960,
+  "person.[0].databool": false,
+  "person.[0].databyte": "d2VsY29tZSB0byBjaGluYQ==",
+  "person.[0].datafix32": 1,
+  "person.[0].datafix64": 666,
+  "person.[0].datasfix32": 120,
+  "person.[0].datasfix64": -802,
+  "person.[0].datafloat_scientific": 123456792.0,
+  "person.[0].datadouble_scientific": 123456789.0
+}
+```
+
+```json
+person.[
+  0
+].datau32=60
+person.[
+  0
+].datafix64=666
+person.[
+  0
+].data32=6
+person.[
+  0
+].datafix32=1
+person.[
+  0
+].datafloat=8.6123
+person.[
+  0
+].databyte=d2VsY29tZSB0byBjaGluYQ==
+person.[
+  0
+].databool=false
+person.[
+  0
+].data64=-1820000000
+person.[
+  0
+].data=-240000000
+person.[
+  0
+].datasfix32=120
+person.[
+  0
+].datadouble_scientific=1.23457e+08
+person.[
+0
+].datau64=960
+person.[
+0
+].datadouble=123.456
+person.[
+0
+].datasfix64=-802
+person.[
+0
+].id=100
+person.[
+0
+].name=myname
+person.[
+0
+].datafloat_scientific=1.23457e+08
+```
 
 ## 🛠️ Build
 
 This project uses [kmpkg](https://github.com/kumose/kmcmake) for dependency management and build integration.
-`kmpkg` automatically handles third-party library downloads, dependency resolution, and compiler flag configuration, avoiding the need to manually maintain complex CMake settings.
-
+`kmpkg` automatically handles third-party library downloads, dependency resolution, and compiler flag configuration,
+avoiding the need to manually maintain complex CMake settings.
 
 ### 0. Prepare the environment
 
 - Linux (Ubuntu 20.04+ / CentOS 7+ Recommended)
 - CMake >= 3.20
 - GCC >= 9.4 / Clang >= 12
-- Make sure `kmpkg` is installed correctly, documents see [installation guide](https://kumo-pub.github.io/docs/category/%E6%8C%81%E7%BB%AD%E9%9B%86%E6%88%90----kmpkg)
+- Make sure `kmpkg` is installed correctly, documents
+  see [installation guide](https://kumo-pub.github.io/docs/category/%E6%8C%81%E7%BB%AD%E9%9B%86%E6%88%90----kmpkg)
 
 ### 1.Configure the project (optional)
 
 * For the complete dependencies, refer to [`kmpkg.json`](kmpkg.json)
-* To update the dependency baseline, modify the `baseline` in `default-registry` of [`kmpkg-configuration.json`](kmpkg-configuration.json)
+* To update the dependency baseline, modify the `baseline` in `default-registry` of [
+  `kmpkg-configuration.json`](kmpkg-configuration.json)
 * the `baseline` can be obtained via `git log`.
-
 
 ### 2. Build the project
 
@@ -46,6 +241,7 @@ Run in the project root directory:
 cmake --preset=defualt
 cmake --build build -j$(nproc)
 ```
+
 #### Using Manual Dependency Management
 
 If you manage dependencies yourself, you can build the project

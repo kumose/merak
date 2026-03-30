@@ -77,3 +77,18 @@ kmcmake_cc_test(
 endforeach()
 add_subdirectory(json)
 add_subdirectory(pertf)
+kmcmake_cc_test(
+        NAME mock_test
+        MODULE base
+        SOURCES mock_test.cc
+        CXXOPTS
+        ${KMCMAKE_CXX_OPTIONS}
+        LINKS
+        GTest::gtest
+        GTest::gtest_main
+        merak::merak_static
+        merak::test_proto_static
+        ${LIBPROFILER}
+        PkgConfig::libunwind
+        ${KMCMAKE_DEPS_LINK}
+)
