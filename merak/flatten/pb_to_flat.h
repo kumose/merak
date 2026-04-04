@@ -21,7 +21,8 @@
 #include <google/protobuf/message.h>
 #include <google/protobuf/io/zero_copy_stream.h> // ZeroCopyOutputStream
 #include <merak/json.h>
-#include <merak/flatten/handler.h>
+#include <merak/flat_handler.h>
+#include <merak/options.h>
 #include <turbo/container/flat_hash_map.h>
 
 namespace merak {
@@ -32,7 +33,7 @@ namespace merak {
 
 
     void proto_message_to_flat(const google::protobuf::Message &message,
-                           turbo::flat_hash_map<std::string, FlatValueType> &result,
+                           turbo::flat_hash_map<std::string, PrimitiveValue> &result,
                            const Pb2FlatOptions &op = Pb2FlatOptions());
 
     void proto_message_to_flat(const google::protobuf::Message &message,
@@ -40,7 +41,7 @@ namespace merak {
                                const Pb2FlatOptions &op = Pb2FlatOptions());
 
     void proto_message_to_flat(const google::protobuf::Message &message,
-                               FlatHandler &result,
+                               FlatHandlerBase &result,
                                const Pb2FlatOptions &op = Pb2FlatOptions());
 
 } // namespace merak

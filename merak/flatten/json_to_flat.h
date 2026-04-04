@@ -19,7 +19,8 @@
 #include <turbo/utility/status.h>
 #include <google/protobuf/message.h>
 #include <google/protobuf/io/zero_copy_stream.h>    // ZeroCopyInputStream
-#include <merak/flatten/handler.h>
+#include <merak/flat_handler.h>
+#include <merak/options.h>
 
 namespace merak {
 
@@ -32,18 +33,18 @@ namespace merak {
     // * the function still returns false on empty document but the `error' is set
     //   to empty string instead of `The document is empty'.
     turbo::Status json_to_flat(const std::string& json,
-                            turbo::Nonnull<FlatHandler*> message,
+                            turbo::Nonnull<FlatHandlerBase*> message,
                             const Json2FlatOptions& options,
                             size_t* parsed_offset = nullptr);
 
     // Use ZeroCopyInputStream as input instead of std::string.
     turbo::Status json_to_flat(google::protobuf::io::ZeroCopyInputStream *json,
-                                        turbo::Nonnull<FlatHandler*> message,
+                                        turbo::Nonnull<FlatHandlerBase*> message,
                             const Json2FlatOptions &options,
                             size_t *parsed_offset = nullptr);
 
     turbo::Status json_to_flat(const merak::json::Value &json,
-                                        turbo::Nonnull<FlatHandler*> message,
+                                        turbo::Nonnull<FlatHandlerBase*> message,
                                const Json2FlatOptions &options = Json2FlatOptions());
 
 
@@ -53,16 +54,16 @@ namespace merak {
     // and recreates a ZeroCopyStreamReader internally that can't be reused
     // between continuous calls.
     turbo::Status json_to_flat(ZeroCopyStreamReader *json,
-                                        turbo::Nonnull<FlatHandler*> message,
+                                        turbo::Nonnull<FlatHandlerBase*> message,
                             const Json2FlatOptions& options,
                             size_t* parsed_offset = nullptr);
 
     // Using default Json2PbOptions.
     turbo::Status json_to_flat(const std::string& json,
-                                        turbo::Nonnull<FlatHandler*> message);
+                                        turbo::Nonnull<FlatHandlerBase*> message);
 
     turbo::Status json_to_flat(google::protobuf::io::ZeroCopyInputStream* stream,
-                                        turbo::Nonnull<FlatHandler*> message);
+                                        turbo::Nonnull<FlatHandlerBase*> message);
 
     // Using default Pb2JsonOptions.
     template<typename T>
@@ -78,11 +79,10 @@ namespace merak {
 
     // Using default Pb2JsonOptions.
     template<typename T>
-    turbo::Status json_to_flat_map(T message, turbo::flat_hash_map<std::string, FlatValueType> &result,
+    turbo::Status json_to_flat_map(T message, turbo::flat_hash_map<std::string, PrimitiveValue> &result,
                                     const Json2FlatOptions &options = Json2FlatOptions(), size_t* parsed_offset = nullptr) {
-        FlatMapHandler handler;
+        FlatContainerHandler<turbo::flat_hash_map<std::string, PrimitiveValue>> handler(result);
         TURBO_RETURN_NOT_OK(merak::json_to_flat(message,&handler, options, parsed_offset));
-        result = std::move(handler.flatmap);
         return turbo::OkStatus();
     }
 
@@ -90,10 +90,8 @@ namespace merak {
     template<typename T>
     turbo::Status json_to_flat_map(T message, turbo::flat_hash_map<std::string, std::string> &result,
                                     const Json2FlatOptions &options = Json2FlatOptions(), size_t* parsed_offset = nullptr) {
-        FlatStringMapHandler handler;
+        FlatContainerHandler<turbo::flat_hash_map<std::string, std::string>>  handler(result);
         TURBO_RETURN_NOT_OK(merak::json_to_flat(message,&handler, options, parsed_offset));
-        std::cout <<"map:"<<handler.flatmap<< std::endl;
-        result = std::move(handler.flatmap);
         return turbo::OkStatus();
     }
 

@@ -512,13 +512,12 @@ namespace merak {
     }
 
     void proto_message_to_flat(const google::protobuf::Message &message,
-                                    turbo::flat_hash_map<std::string, FlatValueType> &result,
+                                    turbo::flat_hash_map<std::string, PrimitiveValue> &result,
                                     const Pb2FlatOptions &options) {
         PbToFlatConverter converter(options);
         bool succ;
-        FlatMapHandler writer;
+        FlatContainerHandler<turbo::flat_hash_map<std::string, PrimitiveValue>> writer(result);
         succ = converter.Convert(message, writer, true);
-        result = std::move(writer.flatmap);
         TURBO_UNUSED(succ);
     }
 
@@ -527,14 +526,13 @@ namespace merak {
                                     const Pb2FlatOptions &options) {
         PbToFlatConverter converter(options);
         bool succ;
-        FlatStringMapHandler writer;
+        FlatContainerHandler<turbo::flat_hash_map<std::string, std::string>> writer(result);
         succ = converter.Convert(message, writer, true);
-        result = std::move(writer.flatmap);
         TURBO_UNUSED(succ);
     }
 
     void proto_message_to_flat(const google::protobuf::Message &message,
-                               FlatHandler &handler,
+                               FlatHandlerBase &handler,
                                const Pb2FlatOptions &options) {
         PbToFlatConverter converter(options);
         bool succ;

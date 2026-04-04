@@ -73,7 +73,6 @@ namespace merak {
     template<typename V>
     class FlatTree {
     public:
-        using value_type = typename std::variant<V, std::vector<V> >;
 
         turbo::Status feed(turbo::span<std::pair<std::string_view, V>> data) {
             std::vector<std::pair<std::vector<FlatKey>, V>> keyv;
@@ -109,7 +108,7 @@ namespace merak {
 
         /// we assume that std::vector<FlatKey> are sorted, less size should be
         /// insert first
-        turbo::Status push_back(std::vector<FlatKey> k,  value_type value) {
+        turbo::Status push_back(std::vector<FlatKey> k,  V value) {
             FlatTreeNode<V> node;
             node.key = k.back();
             node.value = value;

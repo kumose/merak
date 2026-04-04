@@ -40,7 +40,7 @@ namespace merak {
         explicit JsonToFlatConverter(const Json2FlatOptions &opt) : _options(opt) {
         }
 
-        bool convert(const merak::json::Value &json, FlatHandler &handler, const merak::json::Value* root_val);
+        bool convert(const merak::json::Value &json, FlatHandlerBase &handler, const merak::json::Value* root_val);
 
         [[nodiscard]] const std::string &ErrorText() const { return _error; }
 
@@ -73,7 +73,7 @@ namespace merak {
     };
 
 
-    bool JsonToFlatConverter::convert(const merak::json::Value &json_value, FlatHandler &handler, const merak::json::Value* root_val) {
+    bool JsonToFlatConverter::convert(const merak::json::Value &json_value, FlatHandlerBase &handler, const merak::json::Value* root_val) {
         if (!root_val) {
             if (!json_value.is_object()) {
                 json_to_pb_error(&_error, "Root json must be an object");
@@ -150,7 +150,7 @@ namespace merak {
     }
 
     inline turbo::Status json_to_flat_inline(const std::string &json_string,
-                                             turbo::Nonnull<FlatHandler *> handler,
+                                             turbo::Nonnull<FlatHandlerBase *> handler,
                                              const Json2FlatOptions &options,
                                              size_t *parsed_offset) {
         merak::json::Document d;
@@ -183,7 +183,7 @@ namespace merak {
     }
 
     turbo::Status json_to_flat(const merak::json::Value &json,
-                               FlatHandler *handler,
+                               FlatHandlerBase *handler,
                                const Json2FlatOptions &options) {
         std::string err;
         JsonToFlatConverter cc(options);
@@ -195,14 +195,14 @@ namespace merak {
     }
 
     turbo::Status json_to_flat(const std::string &json_string,
-                               turbo::Nonnull<FlatHandler *> message,
+                               turbo::Nonnull<FlatHandlerBase *> message,
                                const Json2FlatOptions &options,
                                size_t *parsed_offset) {
         return json_to_flat_inline(json_string, message, options, parsed_offset);
     }
 
     turbo::Status json_to_flat(google::protobuf::io::ZeroCopyInputStream *stream,
-                               turbo::Nonnull<FlatHandler *> message,
+                               turbo::Nonnull<FlatHandlerBase *> message,
                                const Json2FlatOptions &options,
                                size_t *parsed_offset) {
         ZeroCopyStreamReader reader(stream);
@@ -210,7 +210,7 @@ namespace merak {
     }
 
     turbo::Status json_to_flat(ZeroCopyStreamReader *reader,
-                               turbo::Nonnull<FlatHandler *> handler,
+                               turbo::Nonnull<FlatHandlerBase *> handler,
                                const Json2FlatOptions &options,
                                size_t *parsed_offset) {
         merak::json::Document d;
@@ -243,13 +243,13 @@ namespace merak {
     }
 
     turbo::Status json_to_flat(const std::string &json_string,
-                               turbo::Nonnull<FlatHandler *> message) {
+                               turbo::Nonnull<FlatHandlerBase *> message) {
         return json_to_flat_inline(json_string, message, Json2FlatOptions(), nullptr);
     }
 
 
     turbo::Status json_to_flat(google::protobuf::io::ZeroCopyInputStream *stream,
-                               turbo::Nonnull<FlatHandler *> message) {
+                               turbo::Nonnull<FlatHandlerBase *> message) {
         return json_to_flat(stream, message, Json2FlatOptions(), nullptr);
     }
 

@@ -36,33 +36,29 @@ namespace merak {
     public:
         explicit PbToJsonConverter(const Pb2JsonOptions &opt) : _option(opt) {}
 
-        template<typename Handler>
-        bool Convert(const google::protobuf::Message &message, Handler &handler, bool root_msg = false);
+        bool Convert(const google::protobuf::Message &message, JsonHandlerBase &handler, bool root_msg = false);
 
         [[nodiscard]] const std::string &ErrorText() const { return _error; }
 
     private:
-        template<typename Handler>
         bool pb_field_to_json(const google::protobuf::Message &message,
                               const google::protobuf::FieldDescriptor *field,
-                              Handler &handler);
-        template<typename Handler>
+                              JsonHandlerBase &handler);
+
         bool pb_field_to_any_single(const google::protobuf::Message &message,
                               const google::protobuf::FieldDescriptor *field,
-                              Handler &handler);
+                              JsonHandlerBase &handler);
 
-        template<typename Handler>
         bool pb_field_to_any(const google::protobuf::Message &message,
                                     const google::protobuf::FieldDescriptor *field,
-                                    Handler &handler);
+                                    JsonHandlerBase &handler);
 
 
         std::string _error;
         Pb2JsonOptions _option;
     };
 
-    template<typename Handler>
-    bool PbToJsonConverter::Convert(const google::protobuf::Message &message, Handler &handler, bool root_msg) {
+    bool PbToJsonConverter::Convert(const google::protobuf::Message &message, JsonHandlerBase &handler, bool root_msg) {
         const google::protobuf::Reflection *reflection = message.GetReflection();
         const google::protobuf::Descriptor *descriptor = message.GetDescriptor();
 
@@ -171,10 +167,9 @@ namespace merak {
         return true;
     }
 
-    template<typename Handler>
     bool PbToJsonConverter::pb_field_to_any(const google::protobuf::Message &message,
                                                    const google::protobuf::FieldDescriptor *field,
-                                                   Handler &handler) {
+                                                   JsonHandlerBase &handler) {
         const google::protobuf::Reflection *reflection = message.GetReflection();
         if (field->is_repeated()) {
             int field_size = reflection->FieldSize(message, field);
@@ -195,10 +190,9 @@ namespace merak {
         return true;
     }
 
-    template<typename Handler>
     bool PbToJsonConverter::pb_field_to_any_single(const google::protobuf::Message &message,
                          const google::protobuf::FieldDescriptor *field,
-                         Handler &handler) {
+                         JsonHandlerBase &handler) {
         const google::protobuf::Reflection *reflection = message.GetReflection();
         std::string key_value;
         handler.start_object();
@@ -236,9 +230,8 @@ namespace merak {
         return true;
     }
 
-    template<typename Handler>
     bool PbToJsonConverter::pb_field_to_json(const google::protobuf::Message &message,
-                                             const google::protobuf::FieldDescriptor *field, Handler &handler) {
+                                             const google::protobuf::FieldDescriptor *field, JsonHandlerBase &handler) {
         if(is_protobuf_any(field)) {
             return pb_field_to_any(message,field,handler);
         }
@@ -424,10 +417,12 @@ namespace merak {
         bool succ;
         if (options.pretty_json) {
             merak::json::PrettyWriter<OutputStream> writer(os);
-            succ = converter.Convert(message, writer, true);
+            JsonHandlerTemplate handler(writer);
+            succ = converter.Convert(message, handler, true);
         } else {
             merak::json::Writer<OutputStream> writer(os);
-            succ = converter.Convert(message, writer, true);
+            JsonHandlerTemplate handler(writer);
+            succ = converter.Convert(message, handler, true);
         }
         if (!succ) {
             return turbo::invalid_argument_error(converter.ErrorText());
@@ -474,7 +469,8 @@ namespace merak {
     turbo::Status proto_message_to_json(const google::protobuf::Message& message,
                                         merak::json::Document &json, const Pb2JsonOptions& options) {
         PbToJsonConverter converter(options);
-        bool succ = converter.Convert(message, json, true);
+        JsonHandlerTemplate handler(json);
+        bool succ = converter.Convert(message, handler, true);
         if (!succ) {
             return turbo::invalid_argument_error(converter.ErrorText());
         }

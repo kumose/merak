@@ -19,7 +19,9 @@
 #include <google/protobuf/message.h>
 #include <google/protobuf/io/zero_copy_stream.h> // ZeroCopyOutputStream
 #include <merak/json.h>
-#include <merak/flatten/handler.h>
+#include <merak/flat_handler.h>
+#include <merak/options.h>
+#include <merak/json_handler.h>
 
 namespace merak {
 

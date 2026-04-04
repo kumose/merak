@@ -90,7 +90,7 @@ namespace merak {
         merak::proto_message_to_flat_json(address_book, &info1);
         std::cout << info1 << std::endl;
 
-        merak::FlatValueMap  map;
+        turbo::flat_hash_map<std::string, PrimitiveValue>  map;
         merak::proto_message_to_flat(address_book, map);
         std::cout << map << std::endl;
 
