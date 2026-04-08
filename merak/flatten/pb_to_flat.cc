@@ -116,11 +116,6 @@ namespace merak {
             }
         }
 
-        if (root_msg && _option.single_repeated_to_array) {
-            if (map_fields.empty() && fields.size() == 1 && fields.front()->is_repeated()) {
-                return pb_field_to_json(message, fields.front(), handler);
-            }
-        }
         if (root_msg) {
             handler.start_object();
         }
@@ -248,15 +243,12 @@ namespace merak {
         value = reflection->GetStringReference(message, value_des, &value);
         std::unique_ptr<google::protobuf::Message> ptr(create_message_by_type_name(key_view));
         if(!ptr) {
-            std::cout<<"ptr == null "<<key_view<<std::endl;
             return false;
         }
         if(!ptr->ParseFromString(value)) {
-            std::cout<<"ParseFromString"<<std::endl;
             return false;
         }
         if (!Convert(*ptr, handler, true)) {
-            std::cout<<"Convert"<<std::endl;
             return false;
         }
         end_object();
@@ -400,8 +392,6 @@ namespace merak {
                             turbo::base64_encode(value, &value_decoded);
                             handler.emplace_string(value_decoded.data(), value_decoded.size(), false);
                         } else {
-                            auto k  = key("");
-                            handler.emplace_key(k.data(), k.size(), false);
                             handler.emplace_string(value.data(), value.size(), false);
                         }
                     }
@@ -507,36 +497,42 @@ namespace merak {
         return turbo::OkStatus();
     }
 
-    void proto_message_to_flat_json(const google::protobuf::Message& message, std::string* json, const Pb2FlatOptions &op) {
-        TURBO_UNUSED(proto_message_to_json(message, json, op));
+    turbo::Status proto_message_to_flat_json(const google::protobuf::Message& message, std::string* json, const Pb2FlatOptions &op) {
+        return proto_message_to_json(message, json, op);
     }
 
-    void proto_message_to_flat(const google::protobuf::Message &message,
-                                    turbo::flat_hash_map<std::string, PrimitiveValue> &result,
-                                    const Pb2FlatOptions &options) {
+    turbo::Status proto_message_to_flat(const google::protobuf::Message &message,
+                                        turbo::flat_hash_map<std::string, PrimitiveValue> &result,
+                                        const Pb2FlatOptions &options) {
         PbToFlatConverter converter(options);
-        bool succ;
         FlatContainerHandler<turbo::flat_hash_map<std::string, PrimitiveValue>> writer(result);
-        succ = converter.Convert(message, writer, true);
-        TURBO_UNUSED(succ);
+        bool succ = converter.Convert(message, writer, true);
+        if (!succ) {
+            return turbo::invalid_argument_error(converter.ErrorText());
+        }
+        return turbo::OkStatus();
     }
 
-    void proto_message_to_flat(const google::protobuf::Message &message,
-                                    turbo::flat_hash_map<std::string, std::string> &result,
-                                    const Pb2FlatOptions &options) {
+    turbo::Status proto_message_to_flat(const google::protobuf::Message &message,
+                                        turbo::flat_hash_map<std::string, std::string> &result,
+                                        const Pb2FlatOptions &options) {
         PbToFlatConverter converter(options);
-        bool succ;
         FlatContainerHandler<turbo::flat_hash_map<std::string, std::string>> writer(result);
-        succ = converter.Convert(message, writer, true);
-        TURBO_UNUSED(succ);
+        bool succ = converter.Convert(message, writer, true);
+        if (!succ) {
+            return turbo::invalid_argument_error(converter.ErrorText());
+        }
+        return turbo::OkStatus();
     }
 
-    void proto_message_to_flat(const google::protobuf::Message &message,
-                               FlatHandlerBase &handler,
-                               const Pb2FlatOptions &options) {
+    turbo::Status proto_message_to_flat(const google::protobuf::Message &message,
+                                        FlatHandlerBase &handler,
+                                        const Pb2FlatOptions &options) {
         PbToFlatConverter converter(options);
-        bool succ;
-        succ = converter.Convert(message, handler, true);
-        TURBO_UNUSED(succ);
+        bool succ = converter.Convert(message, handler, true);
+        if (!succ) {
+            return turbo::invalid_argument_error(converter.ErrorText());
+        }
+        return turbo::OkStatus();
     }
 } // namespace merak

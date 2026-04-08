@@ -54,10 +54,6 @@ namespace merak {
         // the default behavior and print primitive fields regardless of their values.
         bool always_print_primitive_fields{false};
 
-        // Convert the single repeated field to a json array when this option is turned on.
-        // Default: false.
-        bool single_repeated_to_array{false};
-
         // using `@type` instead of `type_url`
         // for Any in json field
         bool using_a_type_url{false};

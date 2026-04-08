@@ -87,16 +87,16 @@ namespace merak {
         merak::proto_message_to_json(address_book, &njson);
         std::cout << njson << std::endl;
 
-        merak::proto_message_to_flat_json(address_book, &info1);
+        ASSERT_TRUE(merak::proto_message_to_flat_json(address_book, &info1).ok());
         std::cout << info1 << std::endl;
 
         turbo::flat_hash_map<std::string, PrimitiveValue>  map;
-        merak::proto_message_to_flat(address_book, map);
+        ASSERT_TRUE(merak::proto_message_to_flat(address_book, map).ok());
         std::cout << map << std::endl;
 
 
         turbo::flat_hash_map<std::string, std::string>  fmap;
-        merak::proto_message_to_flat(address_book, fmap);
+        ASSERT_TRUE(merak::proto_message_to_flat(address_book, fmap).ok());
         std::cout << fmap << std::endl;
 
         turbo::flat_hash_map<std::string, std::string>  jmap;

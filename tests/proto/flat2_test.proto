@@ -1,0 +1,10 @@
+syntax="proto2";
+
+package flat2;
+
+message FlatTest {
+
+    repeated string names = 1;
+    optional int32    id = 2;
+    repeated int64 array = 3;
+};

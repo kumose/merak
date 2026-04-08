@@ -82,7 +82,8 @@ namespace merak {
             handler.start_object();
         }
         if (json_value.is_array()) {
-            if (root_val && root_val->member_count() == 1) {
+            std::string key = make_key("");
+            if (!key.empty()) {
                 for (auto i = 0; i < json_value.size(); ++i) {
                     start_object(turbo::str_format("[%d]",i));
                     if (!convert(json_value[i], handler,&json_value)) {
@@ -185,11 +186,10 @@ namespace merak {
     turbo::Status json_to_flat(const merak::json::Value &json,
                                FlatHandlerBase *handler,
                                const Json2FlatOptions &options) {
-        std::string err;
         JsonToFlatConverter cc(options);
         auto r = cc.convert(json, *handler, nullptr);
         if (TURBO_UNLIKELY(!r)) {
-            return turbo::invalid_argument_error(err);
+            return turbo::invalid_argument_error(cc.error());
         }
         return turbo::OkStatus();
     }
