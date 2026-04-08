@@ -38,22 +38,22 @@ namespace merak {
         explicit PbToFlatConverter(const Pb2FlatOptions &opt) : _option(opt) {}
 
         template<typename Handler>
-        bool Convert(const google::protobuf::Message &message, Handler &handler, bool root_msg = false);
+        turbo::Status Convert(const google::protobuf::Message &message, Handler &handler, bool root_msg = false);
 
         [[nodiscard]] const std::string &ErrorText() const { return _error; }
 
     private:
         template<typename Handler>
-        bool pb_field_to_json(const google::protobuf::Message &message,
+        turbo::Status pb_field_to_json(const google::protobuf::Message &message,
                               const google::protobuf::FieldDescriptor *field,
                               Handler &handler);
         template<typename Handler>
-        bool pb_field_to_any_single(const google::protobuf::Message &message,
+        turbo::Status pb_field_to_any_single(const google::protobuf::Message &message,
                               const google::protobuf::FieldDescriptor *field,
                               Handler &handler);
 
         template<typename Handler>
-        bool pb_field_to_any(const google::protobuf::Message &message,
+        turbo::Status pb_field_to_any(const google::protobuf::Message &message,
                                     const google::protobuf::FieldDescriptor *field,
                                     Handler &handler);
 
@@ -82,7 +82,7 @@ namespace merak {
     };
 
     template<typename Handler>
-    bool PbToFlatConverter::Convert(const google::protobuf::Message &message, Handler &handler, bool root_msg) {
+    turbo::Status PbToFlatConverter::Convert(const google::protobuf::Message &message, Handler &handler, bool root_msg) {
         const google::protobuf::Reflection *reflection = message.GetReflection();
         const google::protobuf::Descriptor *descriptor = message.GetDescriptor();
 
@@ -128,8 +128,7 @@ namespace merak {
             if (!field->is_repeated() && !reflection->HasField(message, field)) {
                 // Field that has not been set
                 if (field->is_required()) {
-                    _error = "Missing required field: " + field->full_name();
-                    return false;
+                    return turbo::data_loss_error("Missing required field: ", field->full_name());
                 }
                 // Whether dumps default fields
                 if (!_option.always_print_primitive_fields) {
@@ -146,9 +145,7 @@ namespace merak {
             bool decoded = decode_name(orig_name, field_name_str);
             const std::string &name = decoded ? field_name_str : orig_name;
             start_object(name);
-            if (!pb_field_to_json(message, field, handler)) {
-                return false;
-            }
+            TURBO_RETURN_NOT_OK(pb_field_to_json(message, field, handler));
             end_object();
         }
 
@@ -175,9 +172,7 @@ namespace merak {
                         entry, key_desc, &entry_name);
                 start_object(entry_name);
                 // Fill in entries into this json object
-                if (!pb_field_to_json(entry, value_desc, handler)) {
-                    return false;
-                }
+                TURBO_RETURN_NOT_OK(pb_field_to_json(entry, value_desc, handler));
                 end_object();
             }
             end_object();
@@ -187,11 +182,11 @@ namespace merak {
             handler.end_object(0);
         }
 
-        return true;
+        return turbo::OkStatus();
     }
 
     template<typename Handler>
-    bool PbToFlatConverter::pb_field_to_any(const google::protobuf::Message &message,
+    turbo::Status PbToFlatConverter::pb_field_to_any(const google::protobuf::Message &message,
                                                    const google::protobuf::FieldDescriptor *field,
                                                    Handler &handler) {
         const google::protobuf::Reflection *reflection = message.GetReflection();
@@ -199,28 +194,23 @@ namespace merak {
             int field_size = reflection->FieldSize(message, field);
             for (int index = 0; index < field_size; ++index) {
                 start_object(turbo::str_format("[%d]",index));
-                if (!pb_field_to_any_single(reflection->GetRepeatedMessage(
-                        message, field, index), field, handler)) {
-                    return false;
-                }
+                TURBO_RETURN_NOT_OK(pb_field_to_any_single(reflection->GetRepeatedMessage(
+                        message, field, index), field, handler));
                 end_object();
             }
 
         } else {
-            if (!pb_field_to_any_single(reflection->GetMessage(message, field), field, handler)) {
-                return false;
-            }
+            TURBO_RETURN_NOT_OK(pb_field_to_any_single(reflection->GetMessage(message, field), field, handler));
         }
-        return true;
+        return turbo::OkStatus();
     }
 
     template<typename Handler>
-    bool PbToFlatConverter::pb_field_to_any_single(const google::protobuf::Message &message,
+    turbo::Status PbToFlatConverter::pb_field_to_any_single(const google::protobuf::Message &message,
                          const google::protobuf::FieldDescriptor *field,
                          Handler &handler) {
         const google::protobuf::Reflection *reflection = message.GetReflection();
         std::string key_value;
-        start_object(field->name());
         /// key
         auto key_des = field->message_type()->field(0);
         key_value = reflection->GetStringReference(message, key_des, &key_value);
@@ -230,33 +220,31 @@ namespace merak {
         }
         if(_option.using_a_type_url) {
             auto k = key(A_TYPE_URL);
-            handler.emplace_key(k.data(), k.size(), false);
+            handler.emplace_key(k.data(), k.size(), true);
         } else {
             auto k = key(TYPE_URL);
-            handler.emplace_key(k.data(), k.size(), false);
+            handler.emplace_key(k.data(), k.size(), true);
         }
         handler.emplace_string(key_value.data(), key_value.size(), false);
-        auto value_des = field->message_type()->field(1);
+        if (key_view.empty()) {
+            return turbo::OkStatus();
+        }
+        const auto &any = static_cast<const google::protobuf::Any &>(message);
         auto k = key(VALUE_NAME);
-        handler.emplace_key(k.data(),k.size(), false);
-        std::string value;
-        value = reflection->GetStringReference(message, value_des, &value);
+        handler.emplace_key(k.data(), k.size(), true);
         std::unique_ptr<google::protobuf::Message> ptr(create_message_by_type_name(key_view));
-        if(!ptr) {
-            return false;
+        if (!ptr) {
+            return turbo::invalid_argument_error("create_message_by_type_name failed by key: ", key_view);
         }
-        if(!ptr->ParseFromString(value)) {
-            return false;
+        if (!any.UnpackTo(ptr.get())) {
+            return turbo::invalid_argument_error("Any::UnpackTo failed, key: ", key_view);
         }
-        if (!Convert(*ptr, handler, true)) {
-            return false;
-        }
-        end_object();
-        return true;
+        TURBO_RETURN_NOT_OK(Convert(*ptr, handler, true));
+        return turbo::OkStatus();
     }
 
     template<typename Handler>
-    bool PbToFlatConverter::pb_field_to_json(const google::protobuf::Message &message,
+    turbo::Status PbToFlatConverter::pb_field_to_json(const google::protobuf::Message &message,
                                              const google::protobuf::FieldDescriptor *field, Handler &handler) {
         if(is_protobuf_any(field)) {
             return pb_field_to_any(message,field,handler);
@@ -451,22 +439,18 @@ namespace merak {
                     int field_size = reflection->FieldSize(message, field);
                     for (int index = 0; index < field_size; ++index) {
                         start_object(turbo::str_format("[%d]",index));
-                        if (!Convert(reflection->GetRepeatedMessage(
-                                message, field, index), handler)) {
-                            return false;
-                        }
+                        TURBO_RETURN_NOT_OK(Convert(reflection->GetRepeatedMessage(
+                                message, field, index), handler));
                         end_object();
                     }
 
                 } else {
-                    if (!Convert(reflection->GetMessage(message, field), handler)) {
-                        return false;
-                    }
+                    TURBO_RETURN_NOT_OK(Convert(reflection->GetMessage(message, field), handler));
                 }
                 break;
             }
         }
-        return true;
+        return turbo::OkStatus();
     }
 
     template<typename OutputStream>
@@ -474,18 +458,13 @@ namespace merak {
                                       const Pb2FlatOptions &options,
                                       OutputStream &os) {
         PbToFlatConverter converter(options);
-        bool succ;
         if (options.pretty_json) {
             merak::json::PrettyWriter<OutputStream> writer(os);
-            succ = converter.Convert(message, writer, true);
+            return converter.Convert(message, writer, true);
         } else {
             merak::json::Writer<OutputStream> writer(os);
-            succ = converter.Convert(message, writer, true);
+            return converter.Convert(message, writer, true);
         }
-        if (!succ) {
-            return turbo::invalid_argument_error(converter.ErrorText());
-        }
-        return turbo::OkStatus();
     }
 
     turbo::Status proto_message_to_json(const google::protobuf::Message &message,
@@ -506,11 +485,7 @@ namespace merak {
                                         const Pb2FlatOptions &options) {
         PbToFlatConverter converter(options);
         FlatContainerHandler<turbo::flat_hash_map<std::string, PrimitiveValue>> writer(result);
-        bool succ = converter.Convert(message, writer, true);
-        if (!succ) {
-            return turbo::invalid_argument_error(converter.ErrorText());
-        }
-        return turbo::OkStatus();
+        return converter.Convert(message, writer, true);
     }
 
     turbo::Status proto_message_to_flat(const google::protobuf::Message &message,
@@ -518,21 +493,13 @@ namespace merak {
                                         const Pb2FlatOptions &options) {
         PbToFlatConverter converter(options);
         FlatContainerHandler<turbo::flat_hash_map<std::string, std::string>> writer(result);
-        bool succ = converter.Convert(message, writer, true);
-        if (!succ) {
-            return turbo::invalid_argument_error(converter.ErrorText());
-        }
-        return turbo::OkStatus();
+        return converter.Convert(message, writer, true);
     }
 
     turbo::Status proto_message_to_flat(const google::protobuf::Message &message,
                                         FlatHandlerBase &handler,
                                         const Pb2FlatOptions &options) {
         PbToFlatConverter converter(options);
-        bool succ = converter.Convert(message, handler, true);
-        if (!succ) {
-            return turbo::invalid_argument_error(converter.ErrorText());
-        }
-        return turbo::OkStatus();
+        return converter.Convert(message, handler, true);
     }
 } // namespace merak

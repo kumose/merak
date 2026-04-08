@@ -32,7 +32,7 @@ namespace merak {
             for (auto it: pis) {
                 FlatKey e;
                 /// if array set parenet is array
-                if (it[0] == '[') {
+                if (it[0] == '[' && it.size() > 2 && it.back() == ']') {
                     if (result.empty()) {
                         return turbo::invalid_argument_error("bad format key, can not be array at root");
                     }
@@ -58,87 +58,4 @@ namespace merak {
         bool is_index{false};
     };
 
-    template<typename V>
-    class FlatTreeNode {
-    public:
-        using value_type = V;
-
-    public:
-        FlatKey key;
-        turbo::flat_hash_map<std::string, FlatTreeNode> children;
-        value_type value;
-        bool is_null{true};
-    };
-
-    template<typename V>
-    class FlatTree {
-    public:
-
-        turbo::Status feed(turbo::span<std::pair<std::string_view, V>> data) {
-            std::vector<std::pair<std::vector<FlatKey>, V>> keyv;
-            keyv.reserve(data.size());
-            for (auto it: data) {
-                TURBO_MOVE_OR_RAISE(auto k, FlatKey::parse_key(it.first));
-                keyv.emplace_back(std::pair<std::vector<FlatKey>, V>(k, it.second));
-            }
-            std::sort(keyv.begin(), keyv.end(),[](const std::pair<std::vector<FlatKey>, V>& r, const std::pair<std::vector<FlatKey>, V> &l) {
-                return r.first.size() < l.first.size();
-            });
-            for (auto it: keyv) {
-                TURBO_RETURN_NOT_OK(push_back(it.first, it.second));
-            }
-            return turbo::OkStatus();
-        }
-
-        turbo::Status feed(const turbo::flat_hash_map<std::string_view, V> &data) {
-            std::vector<std::pair<std::vector<FlatKey>, V>> keyv;
-            keyv.reserve(data.size());
-            for (auto it: data) {
-                TURBO_MOVE_OR_RAISE(auto k, FlatKey::parse_key(it.first));
-                keyv.emplace_back(std::pair<std::vector<FlatKey>, V>(k, it.second));
-            }
-            std::sort(keyv.begin(), keyv.end(),[](const std::pair<std::vector<FlatKey>, V>& r, const std::pair<std::vector<FlatKey>, V> &l) {
-                return r.first.size() < l.first.size();
-            });
-            for (auto it: keyv) {
-                TURBO_RETURN_NOT_OK(push_back(it.first, it.second));
-            }
-            return turbo::OkStatus();
-        }
-
-        /// we assume that std::vector<FlatKey> are sorted, less size should be
-        /// insert first
-        turbo::Status push_back(std::vector<FlatKey> k,  V value) {
-            FlatTreeNode<V> node;
-            node.key = k.back();
-            node.value = value;
-            node.is_null = false;
-            if (k.size() == 1) {
-                root.children[k[0].key] = node;
-                return turbo::OkStatus();
-            }
-
-            FlatTreeNode<V> *find = nullptr;
-            find = &root;
-            auto loop = k.size() - 1;
-            for (auto i = 0; i < loop; i++) {
-                auto tit = find->children.find(k[i].key);
-                if (tit != find->children.end()) {
-                    find = &tit->second;
-                    continue;
-                }
-                FlatTreeNode<V> n;
-                n.key = k[i];
-                n.is_null = true;
-                find->children[k[i].key] = n;
-                tit = find->children.find(k[i].key);
-                find = &tit->second;
-            }
-            find->children[k.back().key] = node;
-            return turbo::OkStatus();
-        }
-
-    public:
-        FlatTreeNode<V> root;
-    };
 } // namespace merak

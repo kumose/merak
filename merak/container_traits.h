@@ -51,7 +51,9 @@ namespace merak::internal {
     struct HasPushBackType<
                 T, std::enable_if_t<
                     std::is_same<decltype(std::declval<T>().push_back(std::declval<typename T::value_type &&>())),
-                        typename T::reference>::value
+                        typename T::reference>::value ||
+                        std::is_same<decltype(std::declval<T>().push_back(std::declval<typename T::value_type &&>())),
+                        void>::value
                 > >
             : std::true_type {
     };

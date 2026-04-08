@@ -8,6 +8,7 @@
 - `merak/flatten/json_to_flat.cc`: fix `json_to_flat(const merak::json::Value&, ...)` error path to return `cc.error()` instead of empty message.
 - `merak/flatten/json_to_flat.cc`: adjust array handling for flat constraints (reject anonymous arrays, allow named array flattening).
 - `merak/flatten/pb_to_flat.cc`: remove `std::cout` debug prints in `Any` branch to avoid noisy output.
+- `merak/container_traits.h`: relax `HasPushBackType` to accept `push_back(...) -> void`, enabling standard sequence containers (e.g. `std::vector`) in flat container traits checks.
 
 ### promote 
 
