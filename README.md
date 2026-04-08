@@ -49,6 +49,14 @@ More narrative documentation lives in the [Kumo JSON / fundamentals docs](https:
 
 ---
 
+## Practical guidance (official JSON vs merak)
+
+- **Routine PB → JSON** (nested JSON only, no flat maps, and you are fine with **protobuf’s standard JSON mapping** for `google.protobuf.Any`): prefer the **official** path—either `google::protobuf::util::MessageToJsonString` or Merak’s thin wrapper **`fast_proto_message_to_json`** in `merak/proto/pb_to_json.h` (same behavior; default print options). On the sample in **`benchmark/pb_json_bench.cc`**, that path is **measurably faster** than `proto_message_to_json` for encoding.
+- **Use merak’s `proto_message_to_json` / `json_to_proto_message`** when you need **`Pb2JsonOptions` / `Json2PbOptions`**, **merak’s Any convention** (opaque Base64 `value` for business compatibility—see [`CHANGELOG.md`](CHANGELOG.md)), or any workflow that must stay consistent with **flat** output below.
+- **Flat protobuf and flat JSON** (dotted paths, `proto_message_to_flat*`, `json_to_flat*`, **`FlatProto`**): that is what this library is for; the official JSON utilities do not provide these views.
+
+---
+
 ## Example: nested message, JSON, and flat KV
 
 The following sketches one `AddressBook` / `Person` instance in three shapes: canonical JSON object tree, flat JSON object (one level of string keys), and a line-oriented key–value dump as commonly used in configs.

@@ -49,6 +49,14 @@
 
 ---
 
+## 使用建议（官方 JSON vs merak）
+
+- **常规 PB → JSON**（只要嵌套 JSON、不要扁平 KV，且 **`google.protobuf.Any` 接受 Protobuf 标准 JSON 映射**）：优先走**官方**能力——直接 `google::protobuf::util::MessageToJsonString`，或使用 Merak 的薄封装 **`fast_proto_message_to_json`**（`merak/proto/pb_to_json.h`，默认选项，语义一致）。在 **`benchmark/pb_json_bench.cc`** 同规模样例上，该路径编码耗时 **明显低于** `proto_message_to_json`（可自行跑 `merak_pb_json_bench` 复现）。
+- **`proto_message_to_json` / `json_to_proto_message`**：需要 **`Pb2JsonOptions` / `Json2PbOptions`**、**与现网一致的 Any 约定**（不透明、**`value` 为 Base64 字符串**，见 [`CHANGELOG.md`](CHANGELOG.md)），或必须与下文 **扁平** 管线对齐时使用。
+- **扁平 PB、扁平 JSON**（点分路径、`proto_message_to_flat*`、`json_to_flat*`、**`FlatProto` 写回**）：请用本库的 **flatten** 能力；官方 JSON 工具不包含这些视图。
+
+---
+
 ## 示例：嵌套消息、JSON 与扁平 KV
 
 同一条业务数据在三种形态下的对照：常规嵌套 JSON、扁平 JSON（单层 string key）、以及便于配置的逐行 KV 形式。
