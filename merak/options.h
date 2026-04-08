@@ -112,8 +112,8 @@ namespace merak {
         // Default: false.
         bool single_repeated_to_array{false};
 
-        // using `@type` instead of `type_url`
-        // for Any in json field
+        // using `@type` instead of `type_url` for \c google::protobuf::Any keys in JSON.
+        // The \c value member is always emitted as a JSON string of \b base64 (wire bytes); no unpack.
         bool using_a_type_url{false};
     };
 
@@ -122,6 +122,7 @@ namespace merak {
         // Decode string in json using base64 decoding if the type of
         // corresponding field is bytes when this option is turned on.
         // Default: false for kumo, true otherwise.
+        // For \c google::protobuf::Any, \c value must be a JSON string of valid base64 (not an object).
         bool base64_to_bytes{true};
 
         // Allow decoding json array iff there is only one repeated field.

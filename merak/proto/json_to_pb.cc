@@ -61,37 +61,46 @@ namespace merak {
             type_url_it = value.find_member(kATypeUrl);
         }
         if (type_url_it == value.member_end() || !type_url_it->value.is_string()) {
-            std::cout << "no type_url_it" << std::endl;
             return false;
         }
         std::string type_url = type_url_it->value.get_string();
-        std::string_view type_url_view = type_url;
-        if (turbo::starts_with(type_url_view, TYPE_PREFIX)) {
-            type_url_view = type_url_view.substr(TYPE_PREFIX.size());
-        }
-        std::unique_ptr<google::protobuf::Message> in_msg(create_message_by_type_name(type_url_view));
-        if (!in_msg) {
-            return false;
-        }
-        auto value_it = value.find_member(kValue);
-        if (value_it == value.member_end() || !value_it->value.is_object()) {
-            return false;
-        }
-
-        if (!json_value_to_proto_message(value_it->value, in_msg.get(), options, err, true)) {
-            return false;
-        }
-
-        auto value_data = in_msg->SerializeAsString();
 
         const google::protobuf::FieldDescriptor *key_desc =
                 any_desc->message_type()->FindFieldByName(absl::string_view(TYPE_URL.data(), TYPE_URL.size()));
         const google::protobuf::FieldDescriptor *value_desc =
                 any_desc->message_type()->FindFieldByName(absl::string_view(VALUE_NAME.data(), VALUE_NAME.size()));
         const google::protobuf::Reflection *entry_reflection = message->GetReflection();
-        entry_reflection->SetString(message, key_desc, turbo::str_cat(TYPE_PREFIX, type_url));
-        entry_reflection->SetString(message, value_desc, value_data);
-        return true;
+
+        auto value_it = value.find_member(kValue);
+        if (value_it == value.member_end()) {
+            return false;
+        }
+
+        if (value_it->value.is_string()) {
+            std::string payload;
+            if (!turbo::base64_decode(value_it->value.get_string(), &payload)) {
+                json_to_pb_error(err, "google.protobuf.Any value must be valid base64");
+                return false;
+            }
+            std::string store_type_url = type_url;
+            if (!turbo::starts_with(std::string_view(store_type_url), TYPE_PREFIX)) {
+                store_type_url = turbo::str_cat(TYPE_PREFIX, type_url);
+            }
+            entry_reflection->SetString(message, key_desc, store_type_url);
+            entry_reflection->SetString(message, value_desc, payload);
+            return true;
+        }
+
+        if (value_it->value.is_object()) {
+            json_to_pb_error(err,
+                    "google.protobuf.Any value must be a base64 string, not a JSON object: %s",
+                    any_desc->full_name().c_str());
+            return false;
+        }
+        json_to_pb_error(err,
+                "google.protobuf.Any value must be a JSON string (base64): %s",
+                any_desc->full_name().c_str());
+        return false;
     }
 
     bool json_to_proto_any(const merak::json::Value &value,
