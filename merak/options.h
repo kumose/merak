@@ -122,7 +122,6 @@ namespace merak {
         // Decode string in json using base64 decoding if the type of
         // corresponding field is bytes when this option is turned on.
         // Default: false for kumo, true otherwise.
-        // For \c google::protobuf::Any, \c value must be a JSON string of valid base64 (not an object).
         bool base64_to_bytes{true};
 
         // Allow decoding json array iff there is only one repeated field.

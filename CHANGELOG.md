@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026.4.9 changes
+
+### functional add
+
+- `benchmark/pb_json_bench.cc`: Google Benchmark comparing protobuf native JSON (`google::protobuf::util::MessageToJsonString` / `JsonStringToMessage`) versus merak (`merak::proto_message_to_json` / `merak::json_to_proto_message`) on the same `addressbook::AddressBook` payload as `tests/mock_test.cc`.
+- `benchmark/proto/addressbook.proto`: bench-local copy of the addressbook schema; C++ output generated under `benchmark/proto/` via `kmcmake_cc_proto` / `merak::bench_proto_static`.
+- `benchmark/CMakeLists.txt`: register `bench_proto`, link `merak_pb_json_bench` (`kmcmake_cc_bm`) against Google Benchmark and `merak::bench_proto_static`; run `configure_file` for `config.h` at the top of the file.
+
+### convention
+
+- `google.protobuf.Any` (merak **JSON ↔ protobuf** and the matching **flat** representation): treat the payload as **opaque**—no unpacking the inner type into structured JSON inside `value`. Encoding uses `type_url` and `value` (or JSON key `@type` when `Pb2JsonOptions::using_a_type_url` / `Pb2FlatOptions::using_a_type_url` is set). `value` is always a **JSON string** of **base64** over the inner message’s **binary** serialized bytes (not a JSON object). Decoding requires that string form; a JSON object for `value` is **rejected**. Option notes live in `merak/options.h` (`Pb2JsonOptions`, `Json2PbOptions`, `Pb2FlatOptions`).
+
 ## 2026.4.8 changes
 
 ### bug fixed

@@ -19,6 +19,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <google/protobuf/descriptor.h>
+#include <google/protobuf/util/json_util.h>
 #include <merak/utility/zero_copy_stream_writer.h>
 #include <merak/proto/encode_decode.h>
 #include <merak/proto/descriptor.h>
@@ -458,6 +459,16 @@ namespace merak {
             return turbo::invalid_argument_error(converter.ErrorText());
         }
 
+        return turbo::OkStatus();
+    }
+
+    // See declaration in pb_to_json.h: official JSON; Any shape follows protobuf, not merak.
+    turbo::Status fast_proto_message_to_json(const google::protobuf::Message& message,
+                                             std::string* json) {
+        const auto st = google::protobuf::util::MessageToJsonString(message, json);
+        if (!st.ok()) {
+            return turbo::invalid_argument_error(std::string(st.message()));
+        }
         return turbo::OkStatus();
     }
 } // namespace merak
