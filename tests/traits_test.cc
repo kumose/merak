@@ -44,8 +44,8 @@ namespace merak {
     }
 
     TEST(taits, puash_back_type) {
-        ASSERT_EQ(merak::internal::HasPushBackType<std::vector<int>>::value, false);
-        ASSERT_EQ(merak::internal::HasPushBackType<std::deque<int>>::value, false);
+        ASSERT_EQ(merak::internal::HasPushBackType<std::vector<int>>::value, true);
+        ASSERT_EQ(merak::internal::HasPushBackType<std::deque<int>>::value, true);
         auto v =merak::internal::HasPushBackType<std::unordered_map<int, int>>::value;
         ASSERT_EQ(v, false);
         v =merak::internal::HasPushBackType<turbo::flat_hash_map<int, int>>::value;

@@ -39,10 +39,13 @@ namespace merak {
     /// \c proto_message_to_flat into a hash map when you need lookup.
     ///
     /// Message fields are traversed until a scalar/string/bytes leaf. For \c google::protobuf::Any,
-    /// child segments follow the well-known field names (\c TYPE_URL, \c A_TYPE_URL, \c VALUE_NAME in
-    /// \c merak/proto/descriptor.h); \c type_url and \c @type are both accepted for the type URL. Inner
-    /// payload paths use the unpacked message's field names. Each successful \c set re-packs the Any;
-    /// the type URL must be set before addressing inner fields.
+    /// \c proto_message_to_flat always emits \c type_url (or \c @type per options) plus \c value as a
+    /// \b base64 string of the wire payload (no unpacked inner keys). For \c set, a path ending in
+    /// \c ...value on \c google::protobuf::Any \b must be valid base64 (decoding errors fail the \c set).
+    /// Other segments still follow \c TYPE_URL, \c A_TYPE_URL, \c VALUE_NAME in \c merak/proto/descriptor.h;
+    /// you may set inner field paths after the type URL
+    /// (unpacked edit); each successful \c set re-packs the Any, and the type URL must be set before
+    /// addressing inner fields when using inner paths.
     ///
     /// \b Style: flat KV is meant to be human-readable; \c Any carries an opaque binary \c value on the
     /// wire, so \b prefer concrete message types over \c Any when config is authored as string key-value
@@ -54,8 +57,8 @@ namespace merak {
     ///
     /// Errors are returned as \c turbo::Status: for example unknown field, bad key shape,
     /// path/type mismatch (e.g. index on non-repeated field), empty Any \c type_url when addressing
-    /// inner fields, unknown \c type_url type name, invalid serialized \c value, or assigning a
-    /// scalar to a non-leaf message field.
+    /// inner fields, unknown \c type_url type name, invalid base64 for Any \c value, invalid serialized
+    /// inner payload, or assigning a scalar to a non-leaf message field.
     ///
     /// Repeated fields: callers often cannot control application order. Keys may arrive with a larger
     /// index before a smaller one (e.g. hash-map iteration), and \c set calls may be interleaved with

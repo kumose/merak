@@ -24,6 +24,7 @@
 
 #include <google/protobuf/any.pb.h>
 #include <google/protobuf/descriptor.h>
+#include <turbo/strings/escaping.h>
 #include <turbo/strings/match.h>
 #include <turbo/strings/numbers.h>
 #include <turbo/strings/str_format.h>
@@ -55,6 +56,11 @@ static bool is_any_well_known(const Descriptor *d) {
 
 static bool is_direct_any_segment(std::string_view seg) {
     return seg == TYPE_URL || seg == A_TYPE_URL || seg == VALUE_NAME;
+}
+
+static bool is_any_value_bytes_field(const FieldDescriptor *fd) {
+    return fd != nullptr && fd->type() == FieldDescriptor::TYPE_BYTES &&
+           fd->name() == VALUE_NAME && is_any_well_known(fd->containing_type());
 }
 
 static turbo::Status unwrap_any_for_inner_path(
@@ -551,7 +557,19 @@ static turbo::Status set_leaf_string(LeafTarget &leaf, std::string_view value) {
             return turbo::OkStatus();
         }
         case FieldDescriptor::CPPTYPE_STRING: {
-            const std::string v(value);
+            std::string v;
+            if (fd->type() == FieldDescriptor::TYPE_BYTES) {
+                if (is_any_value_bytes_field(fd)) {
+                    if (!turbo::base64_decode(std::string(value), &v)) {
+                        return turbo::invalid_argument_error(
+                                "google.protobuf.Any.value flat string must be valid base64");
+                    }
+                } else if (!turbo::base64_decode(std::string(value), &v)) {
+                    v.assign(value.data(), value.size());
+                }
+            } else {
+                v.assign(value.data(), value.size());
+            }
             if (rep) {
                 refl->SetRepeatedString(msg, fd, ix, v);
             } else {

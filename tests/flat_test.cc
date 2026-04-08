@@ -21,6 +21,7 @@
 #include <merak/flatten.h>
 #include <merak/flatten/flat_pb.h>
 #include <merak/proto/descriptor.h>
+#include <turbo/strings/escaping.h>
 #include <tests/proto/flat2_test.pb.h>
 #include <tests/proto/flat3_test.pb.h>
 
@@ -148,8 +149,11 @@ TEST(FlatTest, Proto2WithAnyToFlatMap) {
 
     turbo::flat_hash_map<std::string, std::string> flat;
     ASSERT_TRUE(proto_message_to_flat(msg, flat).ok());
-    assert_flat_eq(flat, "detail.a", "55");
     assert_flat_has_non_empty(flat, "detail.type_url");
+    std::string expected_b64;
+    turbo::base64_encode(msg.detail().value(), &expected_b64);
+    assert_flat_eq(flat, "detail.value", expected_b64);
+    EXPECT_EQ(flat.find("detail.a"), flat.end());
 }
 
 TEST(FlatTest, Proto3ToFlatMap) {
@@ -188,8 +192,11 @@ TEST(FlatTest, Proto3WithAnyToFlatMap) {
 
     turbo::flat_hash_map<std::string, std::string> flat;
     ASSERT_TRUE(proto_message_to_flat(msg, flat, op).ok());
-    assert_flat_eq(flat, "detail.a", "66");
     assert_flat_has_non_empty(flat, "detail.type_url");
+    std::string expected_b64;
+    turbo::base64_encode(msg.detail().value(), &expected_b64);
+    assert_flat_eq(flat, "detail.value", expected_b64);
+    EXPECT_EQ(flat.find("detail.a"), flat.end());
 }
 
 TEST(FlatTest, Proto3UnsetAnyToFlatWithAlwaysPrintPrimitiveFields) {
@@ -206,6 +213,9 @@ TEST(FlatTest, Proto3UnsetAnyToFlatWithAlwaysPrintPrimitiveFields) {
     auto it = flat.find("detail.type_url");
     ASSERT_NE(it, flat.end());
     EXPECT_TRUE(it->second.empty());
+    auto vit = flat.find("detail.value");
+    ASSERT_NE(vit, flat.end());
+    EXPECT_TRUE(vit->second.empty());
     EXPECT_EQ(flat.find("detail.a"), flat.end());
 }
 
@@ -426,7 +436,9 @@ TEST(FlatProtoTest, Flat2RoundTripDetailFlatMapWithATypeUrlKeys) {
     turbo::flat_hash_map<std::string, std::string> flat;
     ASSERT_TRUE(proto_message_to_flat(src, flat, gen).ok());
     assert_flat_has_non_empty(flat, std::string("detail.") + std::string(A_TYPE_URL));
-    assert_flat_eq(flat, "detail.a", "11");
+    std::string b64_roundtrip;
+    turbo::base64_encode(src.detail().value(), &b64_roundtrip);
+    assert_flat_eq(flat, "detail.value", b64_roundtrip);
 
     flat2::FlatTest dst;
     FlatProto fp(dst);
@@ -449,7 +461,9 @@ TEST(FlatProtoTest, Flat2RoundTripDetailFlatMapWithTypeUrlKeys) {
     turbo::flat_hash_map<std::string, std::string> flat;
     ASSERT_TRUE(proto_message_to_flat(src, flat, gen).ok());
     assert_flat_has_non_empty(flat, std::string("detail.") + std::string(TYPE_URL));
-    assert_flat_eq(flat, "detail.a", "13");
+    std::string b64_roundtrip2;
+    turbo::base64_encode(src.detail().value(), &b64_roundtrip2);
+    assert_flat_eq(flat, "detail.value", b64_roundtrip2);
 
     flat2::FlatTest dst;
     FlatProto fp(dst);

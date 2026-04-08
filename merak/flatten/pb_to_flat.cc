@@ -22,7 +22,6 @@
 #include <sys/time.h>
 #include <time.h>
 #include <google/protobuf/descriptor.h>
-#include <google/protobuf/any.pb.h>
 #include <merak/utility/zero_copy_stream_writer.h>
 #include <merak/proto/encode_decode.h>
 #include <merak/proto/descriptor.h>
@@ -211,14 +210,9 @@ namespace merak {
                          Handler &handler) {
         const google::protobuf::Reflection *reflection = message.GetReflection();
         std::string key_value;
-        /// key
         auto key_des = field->message_type()->field(0);
         key_value = reflection->GetStringReference(message, key_des, &key_value);
-        std::string_view key_view = key_value;
-        if(turbo::starts_with(key_view, TYPE_PREFIX)) {
-            key_view = key_view.substr(TYPE_PREFIX.size());
-        }
-        if(_option.using_a_type_url) {
+        if (_option.using_a_type_url) {
             auto k = key(A_TYPE_URL);
             handler.emplace_key(k.data(), k.size(), true);
         } else {
@@ -226,20 +220,14 @@ namespace merak {
             handler.emplace_key(k.data(), k.size(), true);
         }
         handler.emplace_string(key_value.data(), key_value.size(), false);
-        if (key_view.empty()) {
-            return turbo::OkStatus();
-        }
-        const auto &any = static_cast<const google::protobuf::Any &>(message);
+        auto value_des = field->message_type()->field(1);
+        std::string value_bytes;
+        value_bytes = reflection->GetStringReference(message, value_des, &value_bytes);
         auto k = key(VALUE_NAME);
         handler.emplace_key(k.data(), k.size(), true);
-        std::unique_ptr<google::protobuf::Message> ptr(create_message_by_type_name(key_view));
-        if (!ptr) {
-            return turbo::invalid_argument_error("create_message_by_type_name failed by key: ", key_view);
-        }
-        if (!any.UnpackTo(ptr.get())) {
-            return turbo::invalid_argument_error("Any::UnpackTo failed, key: ", key_view);
-        }
-        TURBO_RETURN_NOT_OK(Convert(*ptr, handler, true));
+        std::string b64;
+        turbo::base64_encode(value_bytes, &b64);
+        handler.emplace_string(b64.data(), b64.size(), false);
         return turbo::OkStatus();
     }
 

@@ -56,8 +56,7 @@ namespace merak {
         // "try to output unset singular fields" than "primitives only".
         bool always_print_primitive_fields{false};
 
-        // using `@type` instead of `type_url`
-        // for Any in json field
+        // using `@type` instead of `type_url` in flat keys for \c google::protobuf::Any.
         bool using_a_type_url{false};
     };
 
