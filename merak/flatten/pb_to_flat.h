@@ -21,26 +21,27 @@
 #include <google/protobuf/message.h>
 #include <google/protobuf/io/zero_copy_stream.h> // ZeroCopyOutputStream
 #include <merak/json.h>
-#include <merak/flatten/handler.h>
+#include <merak/flat_handler.h>
+#include <merak/options.h>
 #include <turbo/container/flat_hash_map.h>
 
 namespace merak {
 
     // Using default Pb2JsonOptions.
-    void proto_message_to_flat_json(const google::protobuf::Message &message, std::string *json,
-                                    const Pb2FlatOptions &op = Pb2FlatOptions());
+    turbo::Status proto_message_to_flat_json(const google::protobuf::Message &message, std::string *json,
+                                             const Pb2FlatOptions &op = Pb2FlatOptions());
 
 
-    void proto_message_to_flat(const google::protobuf::Message &message,
-                           turbo::flat_hash_map<std::string, FlatValueType> &result,
-                           const Pb2FlatOptions &op = Pb2FlatOptions());
+    turbo::Status proto_message_to_flat(const google::protobuf::Message &message,
+                                        turbo::flat_hash_map<std::string, PrimitiveValue> &result,
+                                        const Pb2FlatOptions &op = Pb2FlatOptions());
 
-    void proto_message_to_flat(const google::protobuf::Message &message,
-                               turbo::flat_hash_map<std::string, std::string> &result,
-                               const Pb2FlatOptions &op = Pb2FlatOptions());
+    turbo::Status proto_message_to_flat(const google::protobuf::Message &message,
+                                        turbo::flat_hash_map<std::string, std::string> &result,
+                                        const Pb2FlatOptions &op = Pb2FlatOptions());
 
-    void proto_message_to_flat(const google::protobuf::Message &message,
-                               FlatHandler &result,
-                               const Pb2FlatOptions &op = Pb2FlatOptions());
+    turbo::Status proto_message_to_flat(const google::protobuf::Message &message,
+                                        FlatHandlerBase &result,
+                                        const Pb2FlatOptions &op = Pb2FlatOptions());
 
 } // namespace merak

@@ -8,64 +8,279 @@
   date: 2025-12-28
 -->
 
-merak
-=============================
+# merak
 
 [English](./README.md)
 
+**Merak** 是一套面向 **Protocol Buffers** 的 C++ 库，在同一套数据上提供 **JSON** 与 **扁平 KV** 两种视图，并内置完整的 **JSON 运行时**（DOM / Reader·Writer、JSON Pointer、JSON Schema 等）。它适合进程内服务：需要**稳定、可预期的编解码规则**、希望用 **`ZeroCopy` 流** 与 **`turbo::Cord` 适配器** 减少拷贝，并在调用 **`json_to_proto_message` 之前**独立完成 JSON 校验或预处理。
 
-merak 项目说明. 更多信息参见[文档](https://pub.kumose.cc/cppdev/docs/foundamentals/json/)
+转换接口统一返回 **`turbo::Status`**，失败可显式处理。各方向的选项集中在 **`merak/options.h`**（`Pb2JsonOptions`、`Json2PbOptions`、`Pb2FlatOptions`、`Json2FlatOptions`）：枚举输出形式、`bytes` 与 Base64、protobuf map 模拟、空 repeated、`compatible_json_field` 等均可配置。
 
-## 🛠️ Build
+更偏教程的说明见 [Kumo 文档 · JSON 基础](https://pub.kumose.cc/cppdev/docs/foundamentals/json/)。**行为变更与约定**（含 `google.protobuf.Any`）请查阅 [`CHANGELOG.md`](CHANGELOG.md)。
 
-本项目使用 [kmpkg](https://github.com/kumose/kmcmake) 进行依赖管理与构建集成。
-kmpkg 会自动处理第三方库下载、依赖查找、编译标志配置等，避免手工维护复杂的 CMake 配置。
+---
 
-### 0. 准备环境
+## 功能概览
 
-- Linux (Ubuntu 20.04+ / CentOS 7+ 推荐)
-- CMake >= 3.25
-- GCC >= 9.4 / Clang >= 12
-- 已安装 `kmpkg`
-  （参见 [安装文档](https://kumo-pub.github.io/docs/category/%E6%8C%81%E7%BB%AD%E9%9B%86%E6%88%90----kmpkg)）
+**Protobuf 与 JSON**
 
-### 1. 配置项目(可选)
+- 在 `google::protobuf::Message` 与 JSON 之间互转（`std::string`、`ZeroCopy` 流、`merak::json::Document` / `Value`）。
+- 覆盖常用 proto2/proto3 习惯用法：可选 **JSON 字段名兼容**、**单 repeated 与 JSON 数组**、通过 **`parsed_offset`** 处理尾部多余内容，以及 float/double 的特殊常量（如 `NaN`、无穷）等。
 
-- 完整的依赖请参见[`kmpkg.json`](kmpkg.json)
-- 更新依赖基线请参见[`kmpkg-configuration.json`](kmpkg-configuration.json) 修改
-  `default-registry`的`baseline`
-- `baseline` 可通过 `git log` 获取最新提交
-- 可选：用户可以自行管理依赖，确保 CMake 的 find_package 能正确找到所需库
+**Protobuf 与扁平 KV**
 
-    - 例如在系统路径或自定义路径安装依赖，并通过 CMAKE_PREFIX_PATH 指定
-    - 或在 kmpkg 中声明外部依赖路径，避免重复下载
+- 将消息展开为 **点分路径 + 带下标 repeated**（例如 `person.[0].name`），可输出为 **扁平 JSON 串**，或写入 `turbo::flat_hash_map`（值为 **`PrimitiveValue`** 或字符串）。
+- **`FlatProto`** 用同一套路径语言 **写回** `Message`，支持 repeated **乱序下标**、map 键值对等；详见 `merak/flatten/flat_pb.h` 中的行为与错误说明。
+- **`google.protobuf.Any`** 按 **不透明字节** 处理：由 `type_url`（或配置下的 `@type`）标识类型，**`value` 为 Base64 编码的序列化负载**，不会在 JSON 里展开成内层对象；解析时 **`value` 必须是字符串**。详见 `CHANGELOG.md` 中的 convention 小节及 `options.h` 注释。
 
-### 2. 编译项目
+**JSON 与扁平**
 
-在项目根目录执行：
+- 将普通 JSON 解析为与上述规则一致的扁平结构（`json_to_flat`、`json_to_flat_map`、`json_to_flat_json`）。
 
-```bash
-cmake --preset=defualt
-cmake --build build -j$(nproc)
+**JSON 子系统（`merak/json/`）**
+
+- Reader / Writer / `PrettyWriter`、`Document`、多种流与编码（含 UTF-8/16/32）、**JSON Pointer**、**JSON Schema**——可脱离 Protobuf 单独使用，单测中有大量覆盖。
+
+**配套工具**
+
+- 基于 `turbo::Cord` 的 **`CordInputStream` / `CordOutputStream`**，对接 Protobuf zero-copy。
+- 字段名 **encode/decode** 与驼峰辅助（`merak/proto/encode_decode.h`）。
+- **描述符辅助**：map 判定、Any 判定、按类型名创建动态消息（`merak/proto/descriptor.h`）。
+
+---
+
+## 使用建议（官方 JSON vs merak）
+
+- **常规 PB → JSON**（只要嵌套 JSON、不要扁平 KV，且 **`google.protobuf.Any` 接受 Protobuf 标准 JSON 映射**）：优先走**官方**能力——直接 `google::protobuf::util::MessageToJsonString`，或使用 Merak 的薄封装 **`fast_proto_message_to_json`**（`merak/proto/pb_to_json.h`，默认选项，语义一致）。在 **`benchmark/pb_json_bench.cc`** 同规模样例上，该路径编码耗时 **明显低于** `proto_message_to_json`（可自行跑 `merak_pb_json_bench` 复现）。
+- **`proto_message_to_json` / `json_to_proto_message`**：需要 **`Pb2JsonOptions` / `Json2PbOptions`**、**与现网一致的 Any 约定**（不透明、**`value` 为 Base64 字符串**，见 [`CHANGELOG.md`](CHANGELOG.md)），或必须与下文 **扁平** 管线对齐时使用。
+- **扁平 PB、扁平 JSON**（点分路径、`proto_message_to_flat*`、`json_to_flat*`、**`FlatProto` 写回**）：请用本库的 **flatten** 能力；官方 JSON 工具不包含这些视图。
+
+---
+
+## 示例：嵌套消息、JSON 与扁平 KV
+
+同一条业务数据在三种形态下的对照：常规嵌套 JSON、扁平 JSON（单层 string key）、以及便于配置的逐行 KV 形式。
+
+```protobuf
+syntax="proto2";
+
+package addressbook;
+message Person {
+    required string name = 1;
+    required int32 id = 2;        // Unique ID number for this person.
+    optional string email = 3;
+
+    enum PhoneType {
+        MOBILE = 0;
+        HOME = 1;
+        WORK = 2;
+    }
+
+    message PhoneNumber {
+        required string number = 1;
+        optional PhoneType type = 2 [default = HOME];
+    }
+
+    repeated PhoneNumber phone = 4;
+
+    optional int64 data = 5;
+
+    optional sint32 data32 = 6;
+
+    optional sint64 data64 = 7;
+
+    required double datadouble = 8;
+
+    optional float  datafloat = 9;
+
+    optional uint32 datau32 = 10;
+
+    optional uint64 datau64 = 11;
+
+    optional bool   databool = 12;
+
+    optional bytes databyte = 13;
+
+    optional fixed32 datafix32 = 14;
+
+    optional fixed64 datafix64 = 15;
+
+    optional sfixed32 datasfix32 = 16;
+
+    optional sfixed64 datasfix64 = 17;
+
+    optional float datafloat_scientific = 18;
+
+    optional double datadouble_scientific = 19;
+
+    extensions 100 to 200;
+}
+
+extend Person {
+    optional string hobby = 100;
+}
+
+message AddressBook {
+    repeated Person person = 1;
+}
+
 ```
 
-自管理依赖：
+```c++
+AddressBook address_book;
+
+      Person *person = address_book.add_person();
+
+      person->set_id(100);
+
+      person->set_name("myname");
+      person->set_data(-240000000);
+      person->set_data32(6);
+      person->set_data64(-1820000000);
+      person->set_datadouble(123.456);
+      person->set_datadouble_scientific(1.23456789e+08);
+      person->set_datafloat_scientific(1.23456789e+08);
+      person->set_datafloat(8.6123);
+      person->set_datau32(60);
+      person->set_datau64(960);
+      person->set_databool(0);
+      person->set_databyte("welcome to china");
+      person->set_datafix32(1);
+      person->set_datafix64(666);
+      person->set_datasfix32(120);
+      person->set_datasfix64(-802);
+```
+
+```json
+{
+  "person": [
+    {
+      "name": "myname",
+      "id": 100,
+      "data": -240000000,
+      "data32": 6,
+      "data64": -1820000000,
+      "datadouble": 123.456,
+      "datafloat": 8.612299919128418,
+      "datau32": 60,
+      "datau64": 960,
+      "databool": false,
+      "databyte": "d2VsY29tZSB0byBjaGluYQ==",
+      "datafix32": 1,
+      "datafix64": 666,
+      "datasfix32": 120,
+      "datasfix64": -802,
+      "datafloat_scientific": 123456792.0,
+      "datadouble_scientific": 123456789.0
+    }
+  ]
+}
+
+```
+
+```json
+{
+  "person.[0].name": "myname",
+  "person.[0].id": 100,
+  "person.[0].data": -240000000,
+  "person.[0].data32": 6,
+  "person.[0].data64": -1820000000,
+  "person.[0].datadouble": 123.456,
+  "person.[0].datafloat": 8.612299919128418,
+  "person.[0].datau32": 60,
+  "person.[0].datau64": 960,
+  "person.[0].databool": false,
+  "person.[0].databyte": "d2VsY29tZSB0byBjaGluYQ==",
+  "person.[0].datafix32": 1,
+  "person.[0].datafix64": 666,
+  "person.[0].datasfix32": 120,
+  "person.[0].datasfix64": -802,
+  "person.[0].datafloat_scientific": 123456792.0,
+  "person.[0].datadouble_scientific": 123456789.0
+}
+```
+
+```text
+map:person.[0].databyte=d2VsY29tZSB0byBjaGluYQ==
+person.[0].datafix64=666
+person.[0].datau32=60
+person.[0].name=myname
+person.[0].datau64=960
+person.[0].datasfix64=-802
+person.[0].datadouble=123.456
+person.[0].datasfix32=120
+person.[0].data32=6
+person.[0].datafloat_scientific=1.23457e+08
+person.[0].data64=-1820000000
+person.[0].databool=false
+person.[0].datadouble_scientific=1.23457e+08
+person.[0].datafloat=8.6123
+person.[0].datafix32=1
+person.[0].data=-240000000
+person.[0].id=100
+```
+
+---
+
+## 目录导览
+
+| 路径 | 作用 |
+|------|------|
+| `merak/proto/` | `proto_message_to_json`、`json_to_proto_message`、描述符工具 |
+| `merak/flatten/` | `proto_message_to_flat*`、`json_to_flat*`、`FlatProto`、`FlatKey` |
+| `merak/json/` | JSON DOM、读写、Pointer、Schema |
+| `merak/options.h` | 各方向选项结构体 |
+| `merak/utility/` | `Cord*Stream`、`ZeroCopyStreamReader`/`Writer` |
+| `tests/` | 单测（含大块 JSON 与 PB/flat 用例） |
+| `benchmark/` | 如 `merak_pb_json_bench`，对比官方 `util` JSON 与 merak |
+
+常用总头：`merak/protobuf.h`、`merak/flatten.h`、`merak/json.h`。
+
+---
+
+## 构建
+
+采用 [kmpkg](https://github.com/kumose/kmcmake) 时，由工具链处理依赖与 CMake 变量；亦可完全自行管理依赖。
+
+### 0. 环境
+
+- Linux（推荐 Ubuntu 20.04+ / CentOS 7+）
+- CMake >= 3.24（以根目录 `CMakeLists.txt` 为准）
+- GCC >= 9.4 / Clang >= 12
+- 使用预设时需安装 [kmpkg](https://kumo-pub.github.io/docs/category/%E6%8C%81%E7%BB%AD%E9%9B%86%E6%88%90----kmpkg)
+
+### 1. 配置（kmpkg 流程可选）
+
+- 依赖声明：[`kmpkg.json`](kmpkg.json)
+- 基线更新：[`kmpkg-configuration.json`](kmpkg-configuration.json)
+
+### 2. 编译
+
+```bash
+cmake --preset=default
+cmake --build build -j"$(nproc)"
+```
+
+自管依赖时：
 
 ```shell
 mkdir build
 cd build
 cmake ..
-make -j$(nproc)
+cmake --build . -j"$(nproc)"
 ```
 
-***注意***
+需保证 **Protobuf、turbo**（及新版本 Protobuf 所需的 **Abseil**）能被 `find_package` 找到，与 [`cmake/merak_deps.cmake`](cmake/merak_deps.cmake) 一致。
 
-    --preset=default 需确保已在项目根目录下定义相应 CMake Preset
+### 3. 测试与基准
 
-### 3. 运行测试(可选)
+- 单测：配置时加 `-DKMCMAKE_BUILD_TEST=ON`，再执行如 `ctest --test-dir build`。
+- 基准：`-DKMCMAKE_BUILD_BENCHMARK=ON` 生成 `merak_pb_json_bench` 等目标，用于与 `protobuf::util` JSON 对照。
 
-在项目根目录执行：
+---
 
-```shell
-ctest --test-dir build
-```
+## 许可
+
+本项目主体代码为 **Apache License 2.0**（见各源文件头）。
+
+JSON 相关实现部分衍生自 [RapidJSON](https://github.com/Tencent/rapidjson)，遵循 **MIT**；见仓库内 [`rapidjosn.license`](rapidjosn.license)。

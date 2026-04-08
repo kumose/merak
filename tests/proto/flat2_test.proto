@@ -12,8 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-#pragma once
+syntax="proto2";
 
-#include <merak/flatten/pb_to_flat.h>
-#include <merak/flatten/json_to_flat.h>
+package flat2;
 
+import "google/protobuf/any.proto";
+
+message FlatInner {
+    optional int64 a = 1;
+}
+
+message FlatTest {
+    repeated string names = 1;
+    optional int32    id = 2;
+    repeated int64 array = 3;
+    optional google.protobuf.Any detail = 4;
+    repeated google.protobuf.Any details = 5;
+}

@@ -27,6 +27,8 @@
 #include <google/protobuf/util/type_resolver.h>
 #include <google/protobuf/util/type_resolver_util.h>
 #include <turbo/utility/status.h>
+#include <turbo/strings/escaping.h>
+#include <turbo/strings/str_format.h>
 
 class RepeatedFieldTest : public testing::Test {
 protected:
@@ -109,79 +111,64 @@ TEST_F(RepeatedFieldTest, any) {
     }
 }
 
-TEST_F(RepeatedFieldTest, des){
+TEST_F(RepeatedFieldTest, des) {
     auto ptr = merak::create_message_by_type_name("M1");
     ASSERT_TRUE(ptr);
+
     Mox mm;
     mm.set_oabc(21);
-    //mm.mutable_detail()->set_type_url("M1");
     M1 m1;
     m1.set_a(10);
     M2 m2;
     m2.set_b("23");
     mm.mutable_detail()->PackFrom(m1);
     mm.mutable_details()->Add()->PackFrom(m1);
-    auto a2 = mm.mutable_details()->Add();
-    a2->set_type_url("M2");
-    a2->set_value(m2.SerializeAsString());
-    google::protobuf::Message* msg = &mm;
-    const google::protobuf::Reflection *reflection = mm.GetReflection();
-    ASSERT_TRUE(msg!= nullptr);
-    auto d = msg->GetDescriptor();
-    auto detail = d->FindFieldByLowercaseName("detail");
-    auto abc = d->FindFieldByLowercaseName("oabc");
-    std::cout<<detail->cpp_type()<<std::endl;
-    std::cout<<abc->cpp_type()<<std::endl;
-   // const auto &m1_ref = reflection->GetMessage(CPPTYPE_MESSAGE,abc);
-    //std::cout<<"m1: "<<m1_ref.ShortDebugString()<<std::endl;
-    std::cout<<detail->is_repeated()<<std::endl;
-    ASSERT_TRUE(detail!= nullptr);
-    ASSERT_TRUE(merak::is_protobuf_any(detail));
-    const auto *entry_desc = detail->message_type();
-    for(auto i = 0; i < entry_desc->field_count(); i++) {
-        auto d = entry_desc->field(i);
-        std::cout<<d->name()<<std::endl;
-        std::cout<<d->type()<<std::endl;
-        std::cout<<d->cpp_type()<<std::endl;
-    }
-    std::cout<<std::string(30, '#')<<std::endl;
-    detail = d->FindFieldByLowercaseName("details");
-    std::cout<<detail->is_repeated()<<std::endl;
-    ASSERT_TRUE(detail!= nullptr);
-    ASSERT_TRUE(merak::is_protobuf_any(detail));
-    entry_desc = detail->message_type();
-    for(auto i = 0; i < entry_desc->field_count(); i++) {
-        auto d = entry_desc->field(i);
-        std::cout<<d->name()<<std::endl;
-        std::cout<<d->type()<<std::endl;
-        std::cout<<d->cpp_type()<<std::endl;
-    }
+    mm.mutable_details()->Add()->PackFrom(m2);
 
-    std::cout<<std::string(30, '#')<<std::endl;
+    const google::protobuf::Descriptor *desc = mm.GetDescriptor();
+    const google::protobuf::FieldDescriptor *detail_fd = desc->FindFieldByLowercaseName("detail");
+    ASSERT_TRUE(detail_fd != nullptr);
+    ASSERT_TRUE(merak::is_protobuf_any(detail_fd));
+    const google::protobuf::FieldDescriptor *details_fd = desc->FindFieldByLowercaseName("details");
+    ASSERT_TRUE(details_fd != nullptr);
+    ASSERT_TRUE(merak::is_protobuf_any(details_fd));
 
     std::string o;
-    ASSERT_TRUE(merak::proto_message_to_json(mm,&o).ok());
-    std::cout<<o<<std::endl;
+    ASSERT_TRUE(merak::proto_message_to_json(mm, &o).ok());
     merak::Pb2JsonOptions opt;
     opt.using_a_type_url = true;
     std::string oa;
-    ASSERT_TRUE(merak::proto_message_to_json(mm,&oa,opt).ok());
-    std::cout<<oa<<std::endl;
+    ASSERT_TRUE(merak::proto_message_to_json(mm, &oa, opt).ok());
+    ASSERT_FALSE(o.empty());
+    ASSERT_FALSE(oa.empty());
 
-    std::string json= "{\"detail\":{\"type_url\":\"M1\",\"value\":{\"a\":10}},\"details\":[{\"type_url\":\"M1\",\"value\":{\"a\":10}},{\"type_url\":\"M2\",\"value\":{\"b\":\"23\"}}],\"oAbc\":21}";
+    std::string m1_b64;
+    std::string m2_b64;
+    turbo::base64_encode(m1.SerializeAsString(), &m1_b64);
+    turbo::base64_encode(m2.SerializeAsString(), &m2_b64);
+    std::string json = turbo::str_format(
+            R"({"detail":{"type_url":"M1","value":"%s"},"details":[{"type_url":"M1","value":"%s"},{"type_url":"M2","value":"%s"}],"oAbc":21})",
+            m1_b64,
+            m1_b64,
+            m2_b64);
     Mox mmm;
     ASSERT_TRUE(merak::json_to_proto_message(json, &mmm).ok());
-    std::string json1= "{\"detail\":{\"@type\":\"M1\",\"value\":{\"a\":10}},\"details\":[{\"@type\":\"M1\",\"value\":{\"a\":10}},{\"@type\":\"M2\",\"value\":{\"b\":\"23\"}}],\"oAbc\":21}";
+    std::string json1 = turbo::str_format(
+            R"({"detail":{"@type":"M1","value":"%s"},"details":[{"@type":"M1","value":"%s"},{"@type":"M2","value":"%s"}],"oAbc":21})",
+            m1_b64,
+            m1_b64,
+            m2_b64);
     Mox mmm1;
     ASSERT_TRUE(merak::json_to_proto_message(json1, &mmm1).ok());
 
-    std::cout<<mm.ShortDebugString()<<std::endl;
-    std::cout<<"mmm: "<<mmm.ShortDebugString()<<std::endl;
-    std::cout<<"mmm1: "<<mmm1.ShortDebugString()<<std::endl;
+    EXPECT_TRUE(google::protobuf::util::MessageDifferencer::Equals(mm, mmm));
+    EXPECT_TRUE(google::protobuf::util::MessageDifferencer::Equals(mm, mmm1));
+
     M1 m1_up;
-    std::cout<<mmm1.detail().UnpackTo(&m1_up)<<std::endl;
-    std::cout<<m1_up.ShortDebugString()<<std::endl;
+    ASSERT_TRUE(mmm1.detail().UnpackTo(&m1_up));
+    EXPECT_EQ(m1_up.a(), 10);
+
     merak::json::Document doc;
     ASSERT_TRUE(merak::proto_message_to_json(mmm1, doc).ok());
-    std::cout<<doc.to_string()<<std::endl;
+    ASSERT_FALSE(doc.to_string().empty());
 }

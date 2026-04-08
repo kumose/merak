@@ -19,7 +19,9 @@
 #include <google/protobuf/message.h>
 #include <google/protobuf/io/zero_copy_stream.h> // ZeroCopyOutputStream
 #include <merak/json.h>
-#include <merak/flatten/handler.h>
+#include <merak/flat_handler.h>
+#include <merak/options.h>
+#include <merak/json_handler.h>
 
 namespace merak {
 
@@ -38,6 +40,13 @@ namespace merak {
     // Using default Pb2JsonOptions.
     turbo::Status proto_message_to_json(const google::protobuf::Message& message,
                             std::string* json);
+
+    // Fast path: calls Protobuf library JSON directly (`util::MessageToJsonString`, default options).
+    // Prefer when the message has no `google.protobuf.Any` (or you want standard protobuf JSON for Any).
+    // If you need merak's Any encoding (opaque base64 `value`, see `options.h` / CHANGELOG), use
+    // `proto_message_to_json` instead.
+    turbo::Status fast_proto_message_to_json(const google::protobuf::Message& message,
+                                             std::string* json);
 
     turbo::Status proto_message_to_json(const google::protobuf::Message& message,
                             google::protobuf::io::ZeroCopyOutputStream* json);

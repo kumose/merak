@@ -14,24 +14,15 @@
 //
 #pragma once
 
-#include <string>
-#include <turbo/utility/status.h>
-#include <google/protobuf/message.h>
-#include <google/protobuf/io/zero_copy_stream.h> // ZeroCopyOutputStream
-#include <merak/json.h>
+#include <string_view>
+#include <merak/flat_value.h>
+#include <merak/container_traits.h>
 #include <turbo/container/flat_hash_map.h>
-#include <merak/options.h>
 
 namespace merak {
-
-
-    using FlatValueType = std::variant<std::string, bool, int32_t, uint32_t, int64_t, uint64_t, float, double>;
-    using FlatValueMap = turbo::flat_hash_map<std::string, FlatValueType>;
-
-
-    class FlatHandler {
+    class FlatHandlerBase {
     public:
-        virtual ~FlatHandler() = default;
+        virtual ~FlatHandlerBase() = default;
 
         virtual void start_object() = 0;
 
@@ -40,7 +31,7 @@ namespace merak {
         virtual void emplace_key(const char *data, size_t size, bool copy) = 0;
 
         void emplace_key(std::string_view key, bool copy) {
-            emplace_key(key.data(),key.size(), copy);
+            emplace_key(key.data(), key.size(), copy);
         }
 
         virtual void emplace_bool(bool value) = 0;
@@ -58,80 +49,59 @@ namespace merak {
         virtual void emplace_string(const char *data, size_t len, bool) = 0;
     };
 
-    class FlatMapHandler : public FlatHandler {
-    public:
-        FlatMapHandler() = default;
+    template<typename C>
+    struct ContainsAcceptor {
+        using value_type = typename C::value_type;
+        static constexpr bool is_map = internal::IsContainsAcceptor<C>::is_map;
+        static constexpr bool is_seq = internal::IsContainsAcceptor<C>::is_seq;
 
-        ~FlatMapHandler() = default;
+        static constexpr bool is_value = std::is_same_v<value_type, std::pair<std::string, PrimitiveValue> > ||  std::is_same_v<value_type, std::pair<const std::string, PrimitiveValue> >;
 
-        void start_object() {
+        static constexpr bool is_string_value = std::is_same_v<value_type, std::pair<std::string, std::string> > || std::is_same_v<value_type, std::pair<const std::string, std::string> >;
+
+        static constexpr bool is_valid () {
+            return  (is_map || is_seq) && (is_value || is_string_value);
         }
 
-        void end_object(int n = 0) {
+        static_assert(is_valid(), "value or key type not match");
+
+        ContainsAcceptor(C &c) : _c(c) {
         }
 
-        void emplace_key(const char *data, size_t size, bool copy) {
-            if (!copy) {
-                key = std::string_view(data, size);
-                return;
+        void handle(value_type &&v) {
+            if constexpr (is_map) {
+                _c.insert(std::forward<value_type>(v));
+            } else {
+                _c.push_back(std::forward<value_type>(v));
             }
-            _key.assign(data, size);
-            key = _key;
         }
 
-        void emplace_bool(bool value) {
-            FlatValueType v = value;
-            flatmap[key] = std::move(v);
+        template<typename U>
+        void handle(std::string_view k, U u) {
+            PrimitiveValue v;
+            v = u;
+            if constexpr (is_value) {
+                std::pair<std::string, PrimitiveValue> temp(k, v);
+                handle(std::move(temp));
+            } else {
+                std::pair<std::string, std::string> temp(k, v.to_string());
+                handle(std::move(temp));
+            }
         }
 
-        void emplace_int32(int32_t value) {
-            FlatValueType v = value;
-            flatmap[key] = std::move(v);
-        }
-
-        void emplace_uint32(uint32_t value) {
-            FlatValueType v = value;
-            flatmap[key] = std::move(v);
-        }
-
-        void emplace_int64(int64_t value) {
-            FlatValueType v = value;
-            flatmap[key] = std::move(v);
-        }
-
-        void emplace_uint64(uint64_t value) {
-            FlatValueType v = value;
-            flatmap[key] = std::move(v);
-        }
-
-        void emplace_double(double value) {
-            FlatValueType v = value;
-            flatmap[key] = std::move(v);
-        }
-
-        void emplace_string(const char *data, size_t len, bool) {
-            FlatValueType value;
-            value = std::string(data, len);
-            flatmap[key] = std::move(value);
-        }
-
-        turbo::flat_hash_map<std::string, FlatValueType> flatmap;
-
-        /// no need to copy
-        std::string_view key;
-        std::string _key;
+        C &_c;
     };
 
-    class FlatStringMapHandler : public FlatHandler  {
+    template<typename C>
+    class FlatContainerHandler : public FlatHandlerBase {
     public:
-        FlatStringMapHandler() = default;
-
-        ~FlatStringMapHandler() = default;
-
-        void start_object() {
+        FlatContainerHandler(C &c) : _acceptor(c) {
         }
 
-        void end_object(int n = 0) {
+        void start_object() override {
+        }
+
+        void end_object(int n = 0) override {
         }
 
         void emplace_key(const char *data, size_t size, bool copy) {
@@ -144,46 +114,42 @@ namespace merak {
         }
 
         void emplace_bool(bool value) {
-            if (value)
-                flatmap[key] = "true";
-            else
-                flatmap[key] = "false";
+            _acceptor.handle(key, value);
         }
 
         void emplace_int32(int32_t value) {
-            flatmap[key] = turbo::str_cat(value);
+            _acceptor.handle(key, value);
         }
 
         void emplace_uint32(uint32_t value) {
-            flatmap[key] = turbo::str_cat(value);
+            _acceptor.handle(key, value);
         }
 
         void emplace_int64(int64_t value) {
-            flatmap[key] = turbo::str_cat(value);
+            _acceptor.handle(key, value);
         }
 
         void emplace_uint64(uint64_t value) {
-            flatmap[key] = turbo::str_cat(value);
+            _acceptor.handle(key, value);
         }
 
         void emplace_double(double value) {
-            flatmap[key] = turbo::str_cat(value);
+            _acceptor.handle(key, value);
         }
 
         void emplace_string(const char *data, size_t len, bool) {
-            flatmap[key] = std::move(std::string(data, len));
-
+            _acceptor.handle(key, std::string_view(data, len));
         }
 
-        turbo::flat_hash_map<std::string, std::string> flatmap;
-
+    private:
+        ContainsAcceptor<C> _acceptor;
         /// no need to copy
         std::string_view key;
         std::string _key;
     };
 
     template<typename H>
-    class FlatHandlerTemplate : public FlatHandler {
+    class FlatHandlerTemplate : public FlatHandlerBase {
     public:
         FlatHandlerTemplate(H &h) : handler(h) {}
         ~FlatHandlerTemplate() override = default;
@@ -224,32 +190,16 @@ namespace merak {
             handler.emplace_double(value);
         }
 
-        void emplace_string(const char *data, size_t len, bool) override {
-            handler.emplace_string(data, len);
+        void emplace_string(const char *data, size_t len, bool copy) override {
+            handler.emplace_string(data, len, copy);
         }
         H &handler;
     };
 
     inline std::ostream &operator<<(std::ostream &os,
-                                    const turbo::flat_hash_map<std::string, FlatValueType> &flat_map) {
+                                    const turbo::flat_hash_map<std::string, PrimitiveValue> &flat_map) {
         for (const auto &kv: flat_map) {
-            os << kv.first << "=";
-
-            std::visit([&os](auto &&arg) {
-                using T = std::decay_t<decltype(arg)>;
-
-                if constexpr (std::is_same_v<T, std::string>) {
-                    os << arg;
-                }
-                // bool  true / false
-                else if constexpr (std::is_same_v<T, bool>) {
-                    os << std::boolalpha << arg;
-                } else {
-                    os << turbo::str_cat(arg);
-                }
-            }, kv.second);
-
-            os << "\n";
+            os << kv.first << "="<<kv.second.to_string()<<"\n";
         }
         return os;
     }
@@ -260,5 +210,5 @@ namespace merak {
         }
         return os;
     }
-}  // namespace merak
 
+} // namespace merak

@@ -8,17 +8,58 @@
   date: 2025-12-28
 -->
 
-merak
-=============================
+# merak
 
 [中文版](./README_CN.md)
 
-merak Project Description. more info see [documents](https://pub.kumose.cc/cppdev/docs/foundamentals/json/)
+**Merak** is a C++ library for working with **Protocol Buffers** alongside **JSON** and **flattened key–value** views of the same data. It targets in-process services that need predictable encoding rules, efficient I/O (including `ZeroCopy` streams and `turbo::Cord` adapters), and a single toolkit for parsing and generating JSON—not only the thin wrapper around `google::protobuf::Message`, but also a full DOM/SAX-style JSON stack (with JSON Pointer and JSON Schema) suitable for validation and preprocessing before `json_to_proto_message`.
 
-* json to protobuf
-* protobuf to json
-* json to flat kv
-* protobuf to flat kv
+The conversion APIs return **`turbo::Status`**, so failures are carried explicitly instead of silent truncation. Options for each direction live in **`merak/options.h`** (`Pb2JsonOptions`, `Json2PbOptions`, `Pb2FlatOptions`, `Json2FlatOptions`) and control enums, `bytes` as Base64, protobuf “map” shims, empty repeated fields, optional field naming, and more.
+
+More narrative documentation lives in the [Kumo JSON / fundamentals docs](https://pub.kumose.cc/cppdev/docs/foundamentals/json/). Behavioral changes and agreed **conventions** (including `google.protobuf.Any`) are summarized in [`CHANGELOG.md`](CHANGELOG.md).
+
+---
+
+## Capabilities
+
+**Protobuf and JSON**
+
+- Serialize and deserialize between `google::protobuf::Message` and JSON (`std::string`, `ZeroCopy` streams, or `merak::json::Document` / `Value`).
+- Supports proto2/proto3 patterns used in production: optional **compatible JSON field names**, **array-to-single-repeated**, trailing content with **`parsed_offset`**, and float/double edge cases (`NaN`, infinities) where applicable.
+
+**Protobuf and flat KV**
+
+- Turn messages into **dotted paths** with indexed repeated segments (e.g. `person.[0].name`), either as a **flat JSON** string or as `turbo::flat_hash_map` keys mapped to **`PrimitiveValue`** or plain strings.
+- **`FlatProto`** applies the same path language to **write back** into a `Message`, including out-of-order repeated indices and map entries.
+- **`google.protobuf.Any`** is treated as **opaque**: `type_url` (or `@type` when configured) plus a **`value` string holding Base64 of the serialized payload**—not an unpacked nested JSON object. JSON parsing rejects a non-string `value` for `Any`. See `CHANGELOG.md` (convention note) and comments in `options.h`.
+
+**JSON and flat**
+
+- Parse arbitrary JSON into the same flat representation (`json_to_flat`, `json_to_flat_map`, `json_to_flat_json`), sharing rules with the protobuf path where possible.
+
+**JSON runtime (subtree `merak/json/`)**
+
+- **Reader / Writer / `PrettyWriter`**, `Document`, streams (memory, file, encoded UTF-8/UTF-16/UTF-32), **JSON Pointer**, and a **JSON Schema** implementation—used by tests and available for standalone JSON work.
+
+**Utilities**
+
+- **`CordInputStream` / `CordOutputStream`** for Protobuf zero-copy I/O over `turbo::Cord`.
+- **Field-name encode/decode** and camelCase helpers (`merak/proto/encode_decode.h`).
+- **Descriptor helpers**: protobuf map detection, `Any` detection, dynamic message creation by type name (`merak/proto/descriptor.h`).
+
+---
+
+## Practical guidance (official JSON vs merak)
+
+- **Routine PB → JSON** (nested JSON only, no flat maps, and you are fine with **protobuf’s standard JSON mapping** for `google.protobuf.Any`): prefer the **official** path—either `google::protobuf::util::MessageToJsonString` or Merak’s thin wrapper **`fast_proto_message_to_json`** in `merak/proto/pb_to_json.h` (same behavior; default print options). On the sample in **`benchmark/pb_json_bench.cc`**, that path is **measurably faster** than `proto_message_to_json` for encoding.
+- **Use merak’s `proto_message_to_json` / `json_to_proto_message`** when you need **`Pb2JsonOptions` / `Json2PbOptions`**, **merak’s Any convention** (opaque Base64 `value` for business compatibility—see [`CHANGELOG.md`](CHANGELOG.md)), or any workflow that must stay consistent with **flat** output below.
+- **Flat protobuf and flat JSON** (dotted paths, `proto_message_to_flat*`, `json_to_flat*`, **`FlatProto`**): that is what this library is for; the official JSON utilities do not provide these views.
+
+---
+
+## Example: nested message, JSON, and flat KV
+
+The following sketches one `AddressBook` / `Person` instance in three shapes: canonical JSON object tree, flat JSON object (one level of string keys), and a line-oriented key–value dump as commonly used in configs.
 
 ```protobuf
 syntax="proto2";
@@ -43,33 +84,33 @@ message Person {
     repeated PhoneNumber phone = 4;
 
     optional int64 data = 5;
-  
+
     optional sint32 data32 = 6;
-  
+
     optional sint64 data64 = 7;
 
     required double datadouble = 8;
 
-    optional float  datafloat = 9; 
-  
+    optional float  datafloat = 9;
+
     optional uint32 datau32 = 10;
-  
+
     optional uint64 datau64 = 11;
 
     optional bool   databool = 12;
 
     optional bytes databyte = 13;
-  
+
     optional fixed32 datafix32 = 14;
-  
+
     optional fixed64 datafix64 = 15;
-  
+
     optional sfixed32 datasfix32 = 16;
-  
+
     optional sfixed64 datasfix64 = 17;
 
     optional float datafloat_scientific = 18;
-    
+
     optional double datadouble_scientific = 19;
 
     extensions 100 to 200;
@@ -109,6 +150,7 @@ AddressBook address_book;
       person->set_datasfix32(120);
       person->set_datasfix64(-802);
 ```
+
 ```json
 {
   "person": [
@@ -178,61 +220,67 @@ person.[0].data=-240000000
 person.[0].id=100
 ```
 
-## 🛠️ Build
+---
 
-This project uses [kmpkg](https://github.com/kumose/kmcmake) for dependency management and build integration.
-`kmpkg` automatically handles third-party library downloads, dependency resolution, and compiler flag configuration,
-avoiding the need to manually maintain complex CMake settings.
+## Source layout (high level)
 
-### 0. Prepare the environment
+| Path | Role |
+|------|------|
+| `merak/proto/` | `proto_message_to_json`, `json_to_proto_message`, descriptor helpers |
+| `merak/flatten/` | `proto_message_to_flat*`, `json_to_flat*`, `FlatProto`, `FlatKey` |
+| `merak/json/` | JSON DOM, reader/writer, pointer, schema |
+| `merak/options.h` | All major option structs |
+| `merak/utility/` | `Cord*Stream`, `ZeroCopyStreamReader`/`Writer` |
+| `tests/` | Unit tests (JSON suite, PB/flat/`FlatProto`, etc.) |
+| `benchmark/` | e.g. `merak_pb_json_bench` vs `protobuf::util` JSON |
 
-- Linux (Ubuntu 20.04+ / CentOS 7+ Recommended)
-- CMake >= 3.20
+Main entry headers: `merak/protobuf.h`, `merak/flatten.h`, `merak/json.h`.
+
+---
+
+## Build
+
+This project uses [kmpkg](https://github.com/kumose/kmcmake) for dependency management and build integration when you adopt that workflow.
+
+### 0. Environment
+
+- Linux (Ubuntu 20.04+ / CentOS 7+ recommended)
+- CMake >= 3.24 (see root `CMakeLists.txt`)
 - GCC >= 9.4 / Clang >= 12
-- Make sure `kmpkg` is installed correctly, documents
-  see [installation guide](https://kumo-pub.github.io/docs/category/%E6%8C%81%E7%BB%AD%E9%9B%86%E6%88%90----kmpkg)
+- [kmpkg installation](https://kumo-pub.github.io/docs/category/%E6%8C%81%E7%BB%AD%E9%9B%86%E6%88%90----kmpkg) when using presets
 
-### 1.Configure the project (optional)
+### 1. Configure (optional kmpkg flow)
 
-* For the complete dependencies, refer to [`kmpkg.json`](kmpkg.json)
-* To update the dependency baseline, modify the `baseline` in `default-registry` of [
-  `kmpkg-configuration.json`](kmpkg-configuration.json)
-* the `baseline` can be obtained via `git log`.
+- Dependencies: [`kmpkg.json`](kmpkg.json)
+- Baseline updates: [`kmpkg-configuration.json`](kmpkg-configuration.json)
 
-### 2. Build the project
-
-Run in the project root directory:
+### 2. Compile
 
 ```bash
-cmake --preset=defualt
-cmake --build build -j$(nproc)
+cmake --preset=default
+cmake --build build -j"$(nproc)"
 ```
 
-#### Using Manual Dependency Management
-
-If you manage dependencies yourself, you can build the project
-with standard CMake commands:
+Manual dependency layout:
 
 ```shell
 mkdir build
 cd build
 cmake ..
-make -j$(nproc)
+cmake --build . -j"$(nproc)"
 ```
 
-**Note**
+Ensure `find_package` can locate **Protobuf**, **turbo**, and (for newer Protobuf) **Abseil**, consistent with [`cmake/merak_deps.cmake`](cmake/merak_deps.cmake).
 
-- `--preset=default` requires that the corresponding CMake preset is defined in the project root directory.
-- When managing dependencies manually, make sure CMake’s find_package can locate all required libraries.
+### 3. Tests and benchmarks
 
-### 3. Run Tests (Optional)
+- Tests: configure with `-DKMCMAKE_BUILD_TEST=ON`, then e.g. `ctest --test-dir build`.
+- Benchmarks: `-DKMCMAKE_BUILD_BENCHMARK=ON` builds targets such as `merak_pb_json_bench` (native `util::json` vs merak PB↔JSON on a sample message).
 
-Run in the project root directory:
+---
 
-```shell
-ctest --test-dir build
-```
+## License
 
-# LICENCE
+Project code is licensed under **Apache License 2.0** (see file headers).
 
-this parts code from [rapidjson](https://github.com/Tencent/rapidjson) licensed by [MIT](rapidjosn.license).
+Parts of the JSON implementation derive from [RapidJSON](https://github.com/Tencent/rapidjson) under the **MIT** license; see [`rapidjosn.license`](rapidjosn.license).

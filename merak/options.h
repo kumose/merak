@@ -48,18 +48,15 @@ namespace merak {
         // Default: false
         bool jsonify_empty_array{false};
 
-        // Whether to always print primitive fields. By default proto3 primitive
-        // fields with default values will be omitted in JSON output. For example, an
-        // int32 field set to 0 will be omitted. Set this flag to true will override
-        // the default behavior and print primitive fields regardless of their values.
+        // Intended: force proto3 primitive fields with default values to appear in flat output.
+        // Actual (PbToFlatConverter): this disables skipping **unset** singular non-required fields
+        // for every field type, not only primitives—**message** fields (including
+        // google.protobuf.Any) are emitted too. An unset Any (empty type_url) can make
+        // proto_message_to_flat fail. Name is historical/misleading; semantics are closer to
+        // "try to output unset singular fields" than "primitives only".
         bool always_print_primitive_fields{false};
 
-        // Convert the single repeated field to a json array when this option is turned on.
-        // Default: false.
-        bool single_repeated_to_array{false};
-
-        // using `@type` instead of `type_url`
-        // for Any in json field
+        // using `@type` instead of `type_url` in flat keys for \c google::protobuf::Any.
         bool using_a_type_url{false};
     };
 
@@ -115,8 +112,8 @@ namespace merak {
         // Default: false.
         bool single_repeated_to_array{false};
 
-        // using `@type` instead of `type_url`
-        // for Any in json field
+        // using `@type` instead of `type_url` for \c google::protobuf::Any keys in JSON.
+        // The \c value member is always emitted as a JSON string of \b base64 (wire bytes); no unpack.
         bool using_a_type_url{false};
     };
 
